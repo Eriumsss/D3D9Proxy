@@ -1,0 +1,3 @@
+C:/Users/Yusuf/Desktop/Code/ConquestConsole/D3D9Proxy/build/CMakeFiles/d3d9.dir
+C:/Users/Yusuf/Desktop/Code/ConquestConsole/D3D9Proxy/build/CMakeFiles/ALL_BUILD.dir
+C:/Users/Yusuf/Desktop/Code/ConquestConsole/D3D9Proxy/build/CMakeFiles/ZERO_CHECK.dir
