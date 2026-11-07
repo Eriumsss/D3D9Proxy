@@ -8,13 +8,22 @@ from pathlib import Path
 import re
 import unittest
 
-ROOT = Path(__file__).resolve().parents[2]
-CPP = (ROOT / "D3D9Proxy/src/retail_heap_extender.cpp").read_text(encoding="utf-8")
-PROXY = (ROOT / "D3D9Proxy/src/d3d9proxy.cpp").read_text(encoding="utf-8")
-DEVICE = (ROOT / "D3D9Proxy/src/d3d9device.cpp").read_text(encoding="utf-8")
-BUILD = (ROOT / "build_all.bat").read_text(encoding="utf-8")
-NPC = (ROOT / "DLL/NpcProxy/src/npc_game.cpp").read_text(encoding="utf-8")
-PATCHES = (ROOT / "D3D9Proxy/src/memorypatch.cpp").read_text(encoding="utf-8")
+ROOT = Path(__file__).resolve().parents[1]
+# Optional external Magellan/NpcProxy source oracles. The standalone public
+# repository never vendors the private OpenConquest engine tree.
+import os
+ORACLE_ROOT = Path(os.environ.get("OPENCONQUEST_ROOT", str(ROOT.parent / "OpenConquest")))
+def read_oracle(relative):
+    path = ORACLE_ROOT / relative
+    return path.read_text(encoding="utf-8") if path.is_file() else ""
+HAS_ORACLE = all((ORACLE_ROOT / p).is_file() for p in ["DLL/NpcProxy/src/npc_game.cpp"])
+
+CPP = (ROOT / "src/retail_heap_extender.cpp").read_text(encoding="utf-8")
+PROXY = (ROOT / "src/d3d9proxy.cpp").read_text(encoding="utf-8")
+DEVICE = (ROOT / "src/d3d9device.cpp").read_text(encoding="utf-8")
+BUILD = (ROOT / "build.bat").read_text(encoding="utf-8")
+NPC=read_oracle("DLL/NpcProxy/src/npc_game.cpp")
+PATCHES = (ROOT / "src/memorypatch.cpp").read_text(encoding="utf-8")
 
 def signature_rows(text):
     result = {}
@@ -27,6 +36,7 @@ def signature_rows(text):
     return result
 
 class HeapExtensionContract(unittest.TestCase):
+    @unittest.skipUnless(HAS_ORACLE, "requires Magellan/NpcProxy oracle sources; set OPENCONQUEST_ROOT")
     def test_fingerprints_match_original_npc_proxy(self):
         original = signature_rows(NPC)
         copied = signature_rows(CPP)
@@ -38,6 +48,7 @@ class HeapExtensionContract(unittest.TestCase):
                 self.assertIn(address, original)
                 self.assertEqual(copied.get(address), original[address])
 
+    @unittest.skipUnless(HAS_ORACLE, "requires Magellan/NpcProxy oracle sources; set OPENCONQUEST_ROOT")
     def test_no_exe_text_patch_or_crt_arena_replacement(self):
         self.assertNotIn("VirtualProtect(", CPP)
         self.assertNotIn("WriteProcessMemory(", CPP)

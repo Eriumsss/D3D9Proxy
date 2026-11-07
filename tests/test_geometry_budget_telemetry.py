@@ -7,15 +7,25 @@ This test cannot prove a live GPU allocation or level load.
 from pathlib import Path
 import unittest
 
-ROOT=Path(__file__).resolve().parents[2]
-CPP=(ROOT/"D3D9Proxy/src/geometry_budget_telemetry.cpp").read_text("utf-8")
-H=(ROOT/"D3D9Proxy/src/geometry_budget_telemetry.h").read_text("utf-8")
-DEV=(ROOT/"D3D9Proxy/src/d3d9device.cpp").read_text("utf-8")
-PROXY=(ROOT/"D3D9Proxy/src/d3d9proxy.cpp").read_text("utf-8")
-BUILD=(ROOT/"build_all.bat").read_text("utf-8")
-MAGELLAN=(ROOT/"Vespucci/Engine/Magellan/MgGameBuffers.cpp").read_text("utf-8")
+ROOT=Path(__file__).resolve().parents[1]
+# Optional external Magellan/NpcProxy source oracles. The standalone public
+# repository never vendors the private OpenConquest engine tree.
+import os
+ORACLE_ROOT = Path(os.environ.get("OPENCONQUEST_ROOT", str(ROOT.parent / "OpenConquest")))
+def read_oracle(relative):
+    path = ORACLE_ROOT / relative
+    return path.read_text(encoding="utf-8") if path.is_file() else ""
+HAS_ORACLE = all((ORACLE_ROOT / p).is_file() for p in ["Vespucci/Engine/Magellan/MgGameBuffers.cpp"])
+
+CPP=(ROOT/"src/geometry_budget_telemetry.cpp").read_text("utf-8")
+H=(ROOT/"src/geometry_budget_telemetry.h").read_text("utf-8")
+DEV=(ROOT/"src/d3d9device.cpp").read_text("utf-8")
+PROXY=(ROOT/"src/d3d9proxy.cpp").read_text("utf-8")
+BUILD=(ROOT/"build.bat").read_text("utf-8")
+MAGELLAN=read_oracle("Vespucci/Engine/Magellan/MgGameBuffers.cpp")
 
 class StaticGeometryBudget(unittest.TestCase):
+    @unittest.skipUnless(HAS_ORACLE, "requires Magellan/NpcProxy oracle sources; set OPENCONQUEST_ROOT")
     def test_actual_retail_vtable_callsites_are_explicit(self):
         self.assertIn("kVBStaticCall=0x0068E0E9",CPP)
         self.assertIn("kIBStaticCall=0x0068DD74",CPP)

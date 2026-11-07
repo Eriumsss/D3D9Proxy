@@ -3,14 +3,24 @@
 from pathlib import Path
 import unittest
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = (ROOT/"D3D9Proxy/src/retail_texture_vault.cpp").read_text(encoding="utf-8")
-HDR = (ROOT/"D3D9Proxy/src/retail_texture_vault.h").read_text(encoding="utf-8")
-DEVICE = (ROOT/"D3D9Proxy/src/d3d9device.cpp").read_text(encoding="utf-8")
-BUILD = (ROOT/"build_all.bat").read_text(encoding="utf-8")
-NPC = (ROOT/"DLL/NpcProxy/src/gfx.cpp").read_text(encoding="utf-8")
+ROOT = Path(__file__).resolve().parents[1]
+# Optional external Magellan/NpcProxy source oracles. The standalone public
+# repository never vendors the private OpenConquest engine tree.
+import os
+ORACLE_ROOT = Path(os.environ.get("OPENCONQUEST_ROOT", str(ROOT.parent / "OpenConquest")))
+def read_oracle(relative):
+    path = ORACLE_ROOT / relative
+    return path.read_text(encoding="utf-8") if path.is_file() else ""
+HAS_ORACLE = all((ORACLE_ROOT / p).is_file() for p in ["DLL/NpcProxy/src/gfx.cpp"])
+
+SRC = (ROOT/"src/retail_texture_vault.cpp").read_text(encoding="utf-8")
+HDR = (ROOT/"src/retail_texture_vault.h").read_text(encoding="utf-8")
+DEVICE = (ROOT/"src/d3d9device.cpp").read_text(encoding="utf-8")
+BUILD = (ROOT/"build.bat").read_text(encoding="utf-8")
+NPC=read_oracle("DLL/NpcProxy/src/gfx.cpp")
 
 class RetailVaultContract(unittest.TestCase):
+    @unittest.skipUnless(HAS_ORACLE, "requires Magellan/NpcProxy oracle sources; set OPENCONQUEST_ROOT")
     def test_source_oracle_kept(self):
         # These are implementation-critical texture COM paths copied from NpcProxy.
         for marker in ("class VaultTexture : public IDirect3DTexture9",

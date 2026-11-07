@@ -4,19 +4,29 @@ from pathlib import Path
 import re
 import unittest
 
-ROOT=Path(__file__).resolve().parents[2]
-C=(ROOT/"D3D9Proxy/src/static_pool_census.cpp").read_text(encoding="utf-8")
-H=(ROOT/"D3D9Proxy/src/static_pool_census.h").read_text(encoding="utf-8")
-P=(ROOT/"D3D9Proxy/src/d3d9proxy.cpp").read_text(encoding="utf-8")
-B=(ROOT/"build_all.bat").read_text(encoding="utf-8")
-LEVEL=(ROOT/"Vespucci/Engine/Magellan/MgLevelObject.cpp").read_text(encoding="utf-8")
-MODEL=(ROOT/"Vespucci/Engine/Magellan/MgModelRegistry.cpp").read_text(encoding="utf-8")
-TEX=(ROOT/"Vespucci/Engine/Magellan/MgTextureRegistry.cpp").read_text(encoding="utf-8")
-FX=(ROOT/"Vespucci/Engine/Magellan/MgEffectRegistry.cpp").read_text(encoding="utf-8")
-GFX=(ROOT/"Vespucci/Engine/Magellan/MgLevelConstruct.cpp").read_text(encoding="utf-8")
-GEOM=(ROOT/"Vespucci/Engine/Magellan/MgGameBuffers.h").read_text(encoding="utf-8")
+ROOT=Path(__file__).resolve().parents[1]
+# Optional external Magellan/NpcProxy source oracles. The standalone public
+# repository never vendors the private OpenConquest engine tree.
+import os
+ORACLE_ROOT = Path(os.environ.get("OPENCONQUEST_ROOT", str(ROOT.parent / "OpenConquest")))
+def read_oracle(relative):
+    path = ORACLE_ROOT / relative
+    return path.read_text(encoding="utf-8") if path.is_file() else ""
+HAS_ORACLE = all((ORACLE_ROOT / p).is_file() for p in ["Vespucci/Engine/Magellan/MgLevelObject.cpp","Vespucci/Engine/Magellan/MgModelRegistry.cpp","Vespucci/Engine/Magellan/MgTextureRegistry.cpp","Vespucci/Engine/Magellan/MgEffectRegistry.cpp","Vespucci/Engine/Magellan/MgLevelConstruct.cpp","Vespucci/Engine/Magellan/MgGameBuffers.h"])
+
+C=(ROOT/"src/static_pool_census.cpp").read_text(encoding="utf-8")
+H=(ROOT/"src/static_pool_census.h").read_text(encoding="utf-8")
+P=(ROOT/"src/d3d9proxy.cpp").read_text(encoding="utf-8")
+B=(ROOT/"build.bat").read_text(encoding="utf-8")
+LEVEL=read_oracle("Vespucci/Engine/Magellan/MgLevelObject.cpp")
+MODEL=read_oracle("Vespucci/Engine/Magellan/MgModelRegistry.cpp")
+TEX=read_oracle("Vespucci/Engine/Magellan/MgTextureRegistry.cpp")
+FX=read_oracle("Vespucci/Engine/Magellan/MgEffectRegistry.cpp")
+GFX=read_oracle("Vespucci/Engine/Magellan/MgLevelConstruct.cpp")
+GEOM=read_oracle("Vespucci/Engine/Magellan/MgGameBuffers.h")
 
 class StaticMapCensus(unittest.TestCase):
+    @unittest.skipUnless(HAS_ORACLE, "requires Magellan/NpcProxy oracle sources; set OPENCONQUEST_ROOT")
     def test_known_registry_offsets_and_caps(self):
         names={
             "texture_a":(0x24,0x800),"texture_b":(0x2c,0x800),
@@ -32,6 +42,7 @@ class StaticMapCensus(unittest.TestCase):
         self.assertIn('"pfield",0x114,0 /* unverified */', C)
         self.assertIn("Mg_Reserve12(VEC(ebx, 0x114), 0x200)",LEVEL)
 
+    @unittest.skipUnless(HAS_ORACLE, "requires Magellan/NpcProxy oracle sources; set OPENCONQUEST_ROOT")
     def test_factory_caps_are_real(self):
         self.assertIn("> 0x400",MODEL)
         self.assertIn("> 0x800",TEX)
@@ -39,6 +50,7 @@ class StaticMapCensus(unittest.TestCase):
         self.assertIn("> 0x40",GFX)
         self.assertIn("ModelInfo",MODEL)
 
+    @unittest.skipUnless(HAS_ORACLE, "requires Magellan/NpcProxy oracle sources; set OPENCONQUEST_ROOT")
     def test_dynamic_pool_not_static_geometry(self):
         self.assertIn("0x00CD80D4",C)
         self.assertIn("0x17FD00",C)

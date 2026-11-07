@@ -8,15 +8,24 @@ import re
 import struct
 import unittest
 
-ROOT=Path(__file__).resolve().parents[2]
-CODE=(ROOT/"D3D9Proxy/src/effect_registry_1024.cpp").read_text("utf-8")
-HDR=(ROOT/"D3D9Proxy/src/effect_registry_1024.h").read_text("utf-8")
-PROXY=(ROOT/"D3D9Proxy/src/d3d9proxy.cpp").read_text("utf-8")
-BUILD=(ROOT/"build_all.bat").read_text("utf-8")
-MAGELLAN=(ROOT/"Vespucci/Engine/Magellan/MgEffectRegistry.cpp").read_text("utf-8")
-INIT=(ROOT/"Vespucci/Engine/Magellan/MgLevelObject.cpp").read_text("utf-8")
-MODEL=(ROOT/"D3D9Proxy/src/model_registry_2048.cpp").read_text("utf-8")
-TEX=(ROOT/"D3D9Proxy/src/texture_registry_4096.cpp").read_text("utf-8")
+ROOT=Path(__file__).resolve().parents[1]
+# Optional external Magellan/NpcProxy source oracles. The standalone public
+# repository never vendors the private OpenConquest engine tree.
+import os
+ORACLE_ROOT = Path(os.environ.get("OPENCONQUEST_ROOT", str(ROOT.parent / "OpenConquest")))
+def read_oracle(relative):
+    path = ORACLE_ROOT / relative
+    return path.read_text(encoding="utf-8") if path.is_file() else ""
+HAS_ORACLE = all((ORACLE_ROOT / p).is_file() for p in ["Vespucci/Engine/Magellan/MgEffectRegistry.cpp","Vespucci/Engine/Magellan/MgLevelObject.cpp"])
+
+CODE=(ROOT/"src/effect_registry_1024.cpp").read_text("utf-8")
+HDR=(ROOT/"src/effect_registry_1024.h").read_text("utf-8")
+PROXY=(ROOT/"src/d3d9proxy.cpp").read_text("utf-8")
+BUILD=(ROOT/"build.bat").read_text("utf-8")
+MAGELLAN=read_oracle("Vespucci/Engine/Magellan/MgEffectRegistry.cpp")
+INIT=read_oracle("Vespucci/Engine/Magellan/MgLevelObject.cpp")
+MODEL=(ROOT/"src/model_registry_2048.cpp").read_text("utf-8")
+TEX=(ROOT/"src/texture_registry_4096.cpp").read_text("utf-8")
 
 def array(name: str) -> bytes:
     found=re.search(rf"\b{name}\[\]\s*=\s*\{{([^}}]+)\}}",CODE,re.S)
@@ -41,6 +50,7 @@ class Effect1024Contract(unittest.TestCase):
         self.assertIn("kOldCap=0x200",CODE)
         self.assertIn("kNewCap=0x400",CODE)
 
+    @unittest.skipUnless(HAS_ORACLE, "requires Magellan/NpcProxy oracle sources; set OPENCONQUEST_ROOT")
     def test_three_effect_reserves_reach_same_thunk_and_implementation(self):
         calls={
           0x00876E43:bytes.fromhex("e8 42 45 b9 ff"),

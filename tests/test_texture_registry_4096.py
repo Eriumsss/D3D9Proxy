@@ -10,14 +10,23 @@ import re
 import struct
 import unittest
 
-ROOT=Path(__file__).resolve().parents[2]
-C=(ROOT/"D3D9Proxy/src/texture_registry_4096.cpp").read_text(encoding="utf-8")
-H=(ROOT/"D3D9Proxy/src/texture_registry_4096.h").read_text(encoding="utf-8")
-P=(ROOT/"D3D9Proxy/src/d3d9proxy.cpp").read_text(encoding="utf-8")
-BUILD=(ROOT/"build_all.bat").read_text(encoding="utf-8")
-LEVEL=(ROOT/"Vespucci/Engine/Magellan/MgLevelObject.cpp").read_text(encoding="utf-8")
-TEXTURES=(ROOT/"Vespucci/Engine/Magellan/MgTextureRegistry.cpp").read_text(encoding="utf-8")
-MODEL=(ROOT/"D3D9Proxy/src/model_registry_2048.cpp").read_text(encoding="utf-8")
+ROOT=Path(__file__).resolve().parents[1]
+# Optional external Magellan/NpcProxy source oracles. The standalone public
+# repository never vendors the private OpenConquest engine tree.
+import os
+ORACLE_ROOT = Path(os.environ.get("OPENCONQUEST_ROOT", str(ROOT.parent / "OpenConquest")))
+def read_oracle(relative):
+    path = ORACLE_ROOT / relative
+    return path.read_text(encoding="utf-8") if path.is_file() else ""
+HAS_ORACLE = all((ORACLE_ROOT / p).is_file() for p in ["Vespucci/Engine/Magellan/MgLevelObject.cpp","Vespucci/Engine/Magellan/MgTextureRegistry.cpp"])
+
+C=(ROOT/"src/texture_registry_4096.cpp").read_text(encoding="utf-8")
+H=(ROOT/"src/texture_registry_4096.h").read_text(encoding="utf-8")
+P=(ROOT/"src/d3d9proxy.cpp").read_text(encoding="utf-8")
+BUILD=(ROOT/"build.bat").read_text(encoding="utf-8")
+LEVEL=read_oracle("Vespucci/Engine/Magellan/MgLevelObject.cpp")
+TEXTURES=read_oracle("Vespucci/Engine/Magellan/MgTextureRegistry.cpp")
+MODEL=(ROOT/"src/model_registry_2048.cpp").read_text(encoding="utf-8")
 
 CTOR_AT=0x00876DF0
 FACTORY_AT=0x00876B73
@@ -55,6 +64,7 @@ class StaticTextureCapTests(unittest.TestCase):
         self.assertIn("kOldCap=0x800",C)
         self.assertIn("kNewCap=0x1000",C)
 
+    @unittest.skipUnless(HAS_ORACLE, "requires Magellan/NpcProxy oracle sources; set OPENCONQUEST_ROOT")
     def test_both_vector_reserve_calls_share_same_implementation(self):
         for at, opcode in TEXTURE_CALLS.items():
             with self.subTest(at=hex(at)):

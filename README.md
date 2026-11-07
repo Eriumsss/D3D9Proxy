@@ -53,3 +53,7 @@ The PAK/BIN tooling is deliberately **read-only**. It checks reference integrity
 - The original standalone repository's MIT `LICENSE` is retained.
 
 `tools/build_retail_symbols.py` and `build_fn_trace.bat` may require an **external analysis corpus/ported engine tree** present in a local OpenConquest workspace. Those external source datasets are not vendored into this public standalone repository.
+
+### Optional Magellan/NpcProxy oracle checks
+
+Some static regression tests compare extracted x86 opcode contracts with the original Magellan C++ port or NpcProxy implementation. To keep this public project independent, those **external-oracle comparisons are skipped** when the private OpenConquest sources are absent; standalone source/patch and PAK tests still execute. To enable all original comparisons, set the `OPENCONQUEST_ROOT` environment variable to a local checkout of `Eriumsss/OpenConquest` (the directory containing `Vespucci/` and `DLL/`). No engine/oracle sources are bundled into this repository.
