@@ -121,7 +121,8 @@ class HigherRegistryTiers(unittest.TestCase):
 
     def test_new_tier_no_gfx_pfield_patch_claim(self):
         doc=(ROOT/"REGISTRY_CAPACITY_TIERS.md").read_text("utf-8")
-        self.assertIn("Neither GFX nor PField is changed",doc)
+        self.assertIn("GFX has since been expanded independently",doc)
+        self.assertIn("PField remains unchanged",doc)
 
 
 if __name__=="__main__":

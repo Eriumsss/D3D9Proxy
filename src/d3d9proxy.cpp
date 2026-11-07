@@ -12,6 +12,7 @@
 #include "model_registry_2048.h"
 #include "texture_registry_4096.h"
 #include "effect_registry_1024.h"
+#include "gfx_registry_512.h"
 #include "geometry_budget_telemetry.h"
 
 // The frame tracer (F11) sees every draw but none of the code behind it. The
@@ -227,6 +228,7 @@ static BOOL CALLBACK ProxyApplyPatchesOnce(PINIT_ONCE, PVOID, PVOID*) {
     OC_ModelRegistry2048_Init(); // opt-in: guarded registry+factory cap patch, before pool census
     OC_TextureRegistry4096_Init(); // opt-in: two texture vectors and matching factory guard
     OC_EffectRegistry1024_Init(); // opt-in: three FX vectors and the matching factory guard
+    OC_GfxRegistry512_Init(); // opt-in: ONLY level GFX vector + matching 64-entry factory guard
     OC_StaticPoolCensus_Init(); // opt-in, read-only; samples during level loading
     OC_GeometryBudget_Init(); // opt-in, read-only D3D managed VB/IB pressure and failures
     ApplyMemoryPatches();
