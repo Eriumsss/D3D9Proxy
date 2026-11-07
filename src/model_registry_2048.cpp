@@ -47,6 +47,7 @@ static const DWORD kFactoryCmpImm=0x00875D36;
 static const DWORD kLevelCell=0x00CD7EA0;
 static const DWORD kResourceMgrCell=0x00CD80D8;
 static const DWORD kNewCap=0x800;
+static const DWORD kHigherCap=0x1000; // 4096 model records
 static const DWORD kOldCap=0x400;
 
 static const BYTE kConstructorBefore[] = {
@@ -130,7 +131,12 @@ static bool WriteNewCap(DWORD address,DWORD val) {
     } __except(EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
-static bool Install() {
+static bool Install(DWORD requestedCap) {
+    // Hard whitelist: don't let INI values become arbitrary x86 opcode writes.
+    if (requestedCap!=kNewCap && requestedCap!=kHigherCap) {
+        Report("REJECT","unsupported ModelInfo cap");
+        return false;
+    }
     // Validation BEFORE making executable pages writable; this includes
     // the linked MOV EDI operand, all three CALL sites and factory's JG.
     if (!ValidateRetail()) {
@@ -161,10 +167,10 @@ static bool Install() {
     bool attemptedCtor=false,attemptedFactory=false;
     if (good) {
         attemptedCtor=true;
-        const bool ctorWritten=WriteNewCap(kModelCtorImm,kNewCap);
+        const bool ctorWritten=WriteNewCap(kModelCtorImm,requestedCap);
         if (ctorWritten) {
             attemptedFactory=true;
-            good=WriteNewCap(kFactoryCmpImm,kNewCap);
+            good=WriteNewCap(kFactoryCmpImm,requestedCap);
         } else {
             good=false;
         }
@@ -191,7 +197,13 @@ static bool Install() {
         Report("FATAL","failed to restore original EXE page protection");
         return false;
     }
-    if (good) Report("ACTIVE","model registries A/B/C + early factory guard: 1024 -> 2048");
+    if (good) {
+        char detail[128]={0};
+        _snprintf_s(detail,sizeof(detail),_TRUNCATE,
+                    "model registry A/B/C reserve + factory guard: 1024 -> %lu",
+                    (unsigned long)requestedCap);
+        Report("ACTIVE",detail);
+    }
     return good;
 }
 } // namespace
@@ -206,11 +218,12 @@ void OC_ModelRegistry2048_Init() {
     last[1]=0;
     char ini[MAX_PATH]={0};
     if (_snprintf_s(ini,sizeof(ini),_TRUNCATE,"%sproxy.ini",exe)<0) return;
-    if (!GetPrivateProfileIntA("StaticMapPools","ExpandModels2048",0,ini))
-        return; // OFF by default, no memory edits
+    const bool high=GetPrivateProfileIntA("StaticMapPools","ExpandModels4096",0,ini)!=0;
+    const bool low=GetPrivateProfileIntA("StaticMapPools","ExpandModels2048",0,ini)!=0;
+    if (!high && !low) return; // OFF by default, no edits
     if (_snprintf_s(g_logFile,sizeof(g_logFile),_TRUNCATE,
                     "%smodel_registry_2048.log",exe)<0)
         return;
-    Report("BEGIN","optional 2 Ki model registry patch; all-or-reject");
-    Install();
+    Report("BEGIN",high?"optional 4096-entry ModelInfo patch":"optional 2048-entry ModelInfo patch");
+    Install(high?kHigherCap:kNewCap);
 }

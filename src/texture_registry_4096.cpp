@@ -47,6 +47,7 @@ static const DWORD kLevelCell=0x00CD7EA0;
 static const DWORD kResourceManager=0x00CD80D8;
 static const DWORD kOldCap=0x800;
 static const DWORD kNewCap=0x1000;
+static const DWORD kHigherCap=0x2000; // 8192 texture records
 
 // Stop exactly BEFORE 0x00876E05, where the separate model extension
 // changes an immediate. Either patch may be enabled independently.
@@ -124,7 +125,11 @@ static bool WriteImmediate(DWORD at,DWORD cap) {
         return *(volatile DWORD*)(uintptr_t)at==cap;
     } __except(EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
-static bool Apply() {
+static bool Apply(DWORD requestedCap) {
+    if (requestedCap!=kNewCap && requestedCap!=kHigherCap) {
+        Log("REJECT","unsupported TextureInfo cap");
+        return false;
+    }
     if (!ExactVersion()) {
         Log("REJECT","unknown/replaced EXE instructions or reserve/insert paths");
         return false;
@@ -153,10 +158,10 @@ static bool Apply() {
     bool wroteCtor=false,wroteFactory=false;
     if (okay) {
         wroteCtor=true;
-        okay=WriteImmediate(kCtorImm,kNewCap);
+        okay=WriteImmediate(kCtorImm,requestedCap);
         if (okay) {
             wroteFactory=true;
-            okay=WriteImmediate(kFactoryImm,kNewCap);
+            okay=WriteImmediate(kFactoryImm,requestedCap);
         }
     }
     if (!okay) {
@@ -179,8 +184,13 @@ static bool Apply() {
         Log("FATAL","could not restore code page protection");
         return false;
     }
-    if (okay)
-        Log("ACTIVE","texture vectors +0x24/+0x2C and texture factory guard: 2048 -> 4096");
+    if (okay) {
+        char detail[128]={0};
+        _snprintf_s(detail,sizeof(detail),_TRUNCATE,
+                    "texture vectors +0x24/+0x2C + factory guard: 2048 -> %lu",
+                    (unsigned long)requestedCap);
+        Log("ACTIVE",detail);
+    }
     return okay;
 }
 } // namespace
@@ -195,10 +205,11 @@ void OC_TextureRegistry4096_Init() {
     last[1]=0;
     char ini[MAX_PATH]={0};
     if (_snprintf_s(ini,sizeof(ini),_TRUNCATE,"%sproxy.ini",gamePath)<0) return;
-    if (!GetPrivateProfileIntA("StaticMapPools","ExpandTextures4096",0,ini))
-        return; // default OFF
+    const bool high=GetPrivateProfileIntA("StaticMapPools","ExpandTextures8192",0,ini)!=0;
+    const bool low=GetPrivateProfileIntA("StaticMapPools","ExpandTextures4096",0,ini)!=0;
+    if (!high && !low) return; // both OFF by default
     if (_snprintf_s(g_logPath,sizeof(g_logPath),_TRUNCATE,
                     "%stexture_registry_4096.log",gamePath)<0) return;
-    Log("BEGIN","GZF-gated static TextureInfo registry 4096 experiment");
-    Apply();
+    Log("BEGIN",high?"GZF-gated 8192-entry TextureInfo patch":"GZF-gated 4096-entry TextureInfo patch");
+    Apply(high?kHigherCap:kNewCap);
 }
