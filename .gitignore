@@ -1,0 +1,27 @@
+.github/instructions/codacy.instructions.md
+/build/
+/build_new/
+# Local build outputs and IDE caches
+.vs/
+.vscode/
+out/
+bin/
+obj/
+__pycache__/
+*.obj
+*.dll
+*.dll.manifest
+*.exe
+*.exe.manifest
+*.lib
+*.exp
+*.pdb
+*.ilk
+*.idb
+*.pch
+*.tlog
+*.log
+*.user
+*.wsuo
+*.bak*
+build_log.txt

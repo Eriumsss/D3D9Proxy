@@ -1,0 +1,31 @@
+LIBRARY d3d9
+EXPORTS
+    Direct3DCreate9 @1
+    Direct3DCreate9Ex @2
+    D3DPERF_BeginEvent @3
+    D3DPERF_EndEvent @4
+    D3DPERF_SetMarker @5
+    D3DPERF_SetRegion @6
+    D3DPERF_QueryRepeatFrame @7
+    D3DPERF_SetOptions @8
+    D3DPERF_GetStatus @9
+    ; Callback registration API — for cooperative hooking with DebugOverlay
+    IsD3D9ProxyActive @20
+    RegisterEndSceneCallback @21
+    RegisterBeginSceneCallback @22
+    RegisterResetCallback @23
+    UnregisterEndSceneCallback @24
+    ; Vespucci bridge API — DebugOverlay pushes player/entity data via these.
+    VespucciBridge_Init @30
+    VespucciBridge_Shutdown @31
+    VespucciBridge_IsConnected @32
+    VespucciBridge_Send @33
+    VespucciBridge_SetCmdHandler @34
+    VespucciBridge_OnFrame @35
+    VespucciBridge_OnFrameDev @36
+    VespucciBridge_OnLevelLoaded @37
+    VespucciBridge_OnLevelUnloaded @38
+    ; Real game ViewProj (c239-242) + camera pos (c245) for overlay projection.
+    Vb_GetViewProj @39
+    Vb_GetCameraPos @40
+
