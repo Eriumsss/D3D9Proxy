@@ -1,6 +1,6 @@
 # Native D3D9 device-reset resource pool 64 -> 1024 / 4096
 
-This is a genuine fixed-size runtime pointer list, not the ModelInfo/TextureInfo registry, Havok pool, or static managed VB/IB budget. The proxy does not import maps or load another world.
+This is a genuine fixed-size runtime pointer list, not the ModelInfo/TextureInfo registry, Havok pool, or static managed VB/IB budget. In particular, the static vertex and index buffers ordinarily created in D3DPOOL_MANAGED are not counted as this device-reset registration list. The proxy does not import maps or load another world.
 
 ## Verified native x86 evidence
 
