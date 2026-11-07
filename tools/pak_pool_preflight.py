@@ -51,7 +51,7 @@ TABLES = {
     "textures": ("texture_info_num", "texture_info_offset", 0x48, 0x800),
     "effects": ("effect_info_num", "effect_info_offset", 0x10, 0x200),
     "gfx_blocks": ("gfx_block_info_num", "gfx_block_info_offset", 0x0C, 0x40),
-    "pfields": ("pfield_info_num", "pfield_info_offset", 0x14, None),
+    "pfields": ("pfield_info_num", "pfield_info_offset", 0x14, 0x1000),
     "vertex_infos": ("vbuff_info_num", "vbuff_info_offset", 0x20, None),
     "index_infos": ("ibuff_info_num", "ibuff_info_offset", 0x18, None),
 }
@@ -382,6 +382,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="check outer Block1 bounds for BufferInfo, materials, Havok and other info tables")
     parser.add_argument("--mask", type=lambda s: int(s, 0), help="optional Helm's Deep gamemode mask; requires --deep")
     parser.add_argument("--json", action="store_true", help="machine-readable report")
+    parser.add_argument("--assume-pfields8192", action="store_true",
+                        help="what-if: PField registry 8192-entry patch ACTIVE (unverified)")
     parser.add_argument("--assume-gfx256", action="store_true",
                         help="what-if: GFX Block registry 256-entry patch ACTIVE (unverified)")
     parser.add_argument("--assume-gfx512", action="store_true",
@@ -436,6 +438,8 @@ def main(argv: list[str] | None = None) -> int:
         assumed_caps["gfx_blocks"] = 0x100
     if args.assume_gfx512:
         assumed_caps["gfx_blocks"] = 0x200
+    if args.assume_pfields8192:
+        assumed_caps["pfields"] = 0x2000
     try:
         def check_one(pak: Path, bin_file: Path | None) -> PakReport:
             return inspect_pak(pak, args.deep or args.collision_preservation, args.mask, assumed_caps,

@@ -34,7 +34,7 @@ static const Registry kRegistries[] = {
     {"model_a",0x8c,0x400}, {"model_b",0x94,0x400},
     {"model_c",0x9c,0x400}, {"resource_other",0xf4,0x800},
     {"effect_a",0xfc,0x200}, {"effect_b",0x104,0x200},
-    {"effect_c",0x10c,0x200}, {"pfield",0x114,0 /* unverified */},
+    {"effect_c",0x10c,0x200}, {"pfield",0x114,0x1000 /* verified native x86 */},
     {"gfx_block",0x11c,0x40}
 };
 enum { kRegistryCount = sizeof(kRegistries)/sizeof(kRegistries[0]) };

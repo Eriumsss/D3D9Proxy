@@ -160,3 +160,8 @@ for the level's static model registry.
 **Status:** runtime registry reallocations and retail guard patching are
 NOT implemented. The offline PAK preflight and read-only census are implemented
 and opt-in only. No merged Helm's Deep+Isengard runtime test is claimed.
+
+
+## 2026-11-08: exact-executable capacity patches (supersedes old status paragraphs)
+
+The recovered `ConquestLLC.exe` SHA-256 `3ac61c2fe3b61288f06496e0a77a57b04afa09021180f149265cfb686c835858` provides exact code for previously unknown reservoirs. The original PField 12-byte record allocator `FUN_00464AC7` **reserves 0x1000 = 4096 entries**, matching its factory `FUN_00875BF7` guard. The `MgLevelObject.cpp` 512-entry reserve is explicitly a **temporary stand-in**, not the native limit. Resource Other at `level+0xF4` reserves 2048 via `FUN_004347AB` and has a matching guard at `0x00877A1B`. Both helpers have a unique level constructor caller. Exact-byte checked, optional runtime patches now increase ResourceOther to **4096/8192**, PField to **8192**, and an independent GFX level registry patch increases **64→256/512** without changing the shared animation map allocator. See `AUXILIARY_REGISTRY_8192.md`, `GFX_REGISTRY_512.md`, and `REGISTRY_CAPACITY_TIERS.md`. All new patches are default OFF; none has a gameplay runtime proof.

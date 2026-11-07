@@ -39,7 +39,7 @@ class StaticMapCensus(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertRegex(C,rf'\{{"{name}",0x{offset:x},0x{cap:x}\}}')
                 self.assertRegex(LEVEL,rf'Mg_00ea3a30_Reserve8\(VEC\(ebx, 0x{offset:x}\), 0x{cap:x}\)')
-        self.assertIn('"pfield",0x114,0 /* unverified */', C)
+        self.assertIn('"pfield",0x114,0x1000 /* verified native x86 */', C)
         self.assertIn("Mg_Reserve12(VEC(ebx, 0x114), 0x200)",LEVEL)
 
     @unittest.skipUnless(HAS_ORACLE, "requires Magellan/NpcProxy oracle sources; set OPENCONQUEST_ROOT")
