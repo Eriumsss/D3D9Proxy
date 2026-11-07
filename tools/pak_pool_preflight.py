@@ -382,6 +382,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="check outer Block1 bounds for BufferInfo, materials, Havok and other info tables")
     parser.add_argument("--mask", type=lambda s: int(s, 0), help="optional Helm's Deep gamemode mask; requires --deep")
     parser.add_argument("--json", action="store_true", help="machine-readable report")
+    parser.add_argument("--assume-model4096", action="store_true",
+                        help="what-if: 4096 ModelInfo registry patch ACTIVE (unverified)")
+    parser.add_argument("--assume-texture8192", action="store_true",
+                        help="what-if: 8192 TextureInfo registry patch ACTIVE (unverified)")
+    parser.add_argument("--assume-effects2048", action="store_true",
+                        help="what-if: 2048 EffectInfo registry patch ACTIVE (unverified)")
     parser.add_argument("--assume-model2048", action="store_true",
                         help="what-if: runtime MODEL registry patch 2048 applied (NOT verified)")
     parser.add_argument("--assume-texture4096", action="store_true",
@@ -415,6 +421,13 @@ def main(argv: list[str] | None = None) -> int:
         assumed_caps["textures"] = 0x1000
     if args.assume_effects1024:
         assumed_caps["effects"] = 0x400
+    # Match runtime high-tier precedence; this is still only an assumption.
+    if args.assume_model4096:
+        assumed_caps["models"] = 0x1000
+    if args.assume_texture8192:
+        assumed_caps["textures"] = 0x2000
+    if args.assume_effects2048:
+        assumed_caps["effects"] = 0x800
     try:
         def check_one(pak: Path, bin_file: Path | None) -> PakReport:
             return inspect_pak(pak, args.deep or args.collision_preservation, args.mask, assumed_caps,

@@ -29,6 +29,8 @@ on:
       - 'src/effect_registry_1024.h'
       - 'tests/test_effect_registry_1024.py'
       - 'tests/test_texture_registry_4096.py'
+      - 'tests/test_extended_registry_tiers.py'
+      - 'REGISTRY_CAPACITY_TIERS.md'
       - 'tests/test_model_registry_2048.py'
       - 'src/d3d9proxy.cpp'
       - 'build.bat'
@@ -62,6 +64,8 @@ on:
       - 'src/effect_registry_1024.h'
       - 'tests/test_effect_registry_1024.py'
       - 'tests/test_texture_registry_4096.py'
+      - 'tests/test_extended_registry_tiers.py'
+      - 'REGISTRY_CAPACITY_TIERS.md'
       - 'tests/test_model_registry_2048.py'
       - 'src/d3d9proxy.cpp'
       - 'build.bat'
@@ -96,6 +100,8 @@ jobs:
         run: python3 -m unittest discover -s tests -p test_texture_registry_4096.py -v
       - name: GZF effect registry x86 opcode and 1024-entry patch contract
         run: python3 -m unittest discover -s tests -p test_effect_registry_1024.py -v
+      - name: Higher-tier native model/texture/effect registry capacity regression
+        run: python3 -m unittest discover -s tests -p test_extended_registry_tiers.py -v
   retail-x86-module-compile:
     runs-on: windows-latest
     timeout-minutes: 10
