@@ -21,6 +21,7 @@ set(PROXY_SOURCES
   src/model_registry_2048.cpp
   src/texture_registry_4096.cpp
   src/effect_registry_1024.cpp
+  src/gfx_registry_512.cpp
   src/geometry_budget_telemetry.cpp
   src/retail_texture_vault.cpp
 )

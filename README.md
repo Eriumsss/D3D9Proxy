@@ -11,8 +11,9 @@ Standalone, public **x86 Direct3D 9 proxy** for *The Lord of the Rings: Conquest
 | ModelInfo | 1024 | 2048 or **4096** |
 | TextureInfo | 2048 | 4096 or **8192** |
 | EffectInfo | 512 | 1024 or **2048** |
+| **GFX blocks** | **64** | **256 or 512** |
 
-All three expansions are **OFF by default** and guarded by executable opcode fingerprints. The shared GFX block pool and PField capacities remain research targets, not implemented expansion patches. A successful DLL build or synthetic test does **not** prove an expanded map runs correctly in the game.
+All four registry expansions are **OFF by default** and guarded by exact x86 executable opcode fingerprints. **PField** and separate resource pools remain unexpanded. A successful DLL build or synthetic test does **not** prove an expanded map runs correctly in the game.
 
 ```ini
 [StaticMapPools]
@@ -23,6 +24,8 @@ ExpandTextures4096=0
 ExpandTextures8192=0
 ExpandEffects1024=0
 ExpandEffects2048=0
+ExpandGfx256=0
+ExpandGfx512=0
 GeometryBudget=1
 ```
 
@@ -64,3 +67,7 @@ Some static regression tests compare extracted x86 opcode contracts with the ori
 ### New high-capacity runtime tiers
 
 Set `ExpandModels4096=1`, `ExpandTextures8192=1`, and/or `ExpandEffects2048=1` under `[StaticMapPools]`. All are OFF by default; when both low and high flags are enabled for the same registry, high wins. Each tier changes the **constructor reserve and factory guard together**, with the same exact opcode, pre-level, and rollback safeguards as the previous modes. The older options are retained. For documented limitations and exact sites, see [REGISTRY_CAPACITY_TIERS.md](REGISTRY_CAPACITY_TIERS.md). This is real runtime patch code but has **not yet passed a merged-level gameplay test**.
+
+### Isolated GFX Block registry reserve and factory guard
+
+`ExpandGfx256=1` or `ExpandGfx512=1` now patches **only** the GFX level vector's constructor allocation and matching factory early guard. The engine's separate animation binding registry shares the old 64-entry reserve helper, so the patch routes **only GFX's constructor callsite** to a private trampoline that invokes the already-verified native 8-byte pair reserve implementation. The factory's original `JG`, bsearch, qsort, insertion and unload logic remain intact. This patch is exact-image gated and OFF by default; it does **not** load a second world. More: [GFX_REGISTRY_512.md](GFX_REGISTRY_512.md).

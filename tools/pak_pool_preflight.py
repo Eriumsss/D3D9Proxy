@@ -382,6 +382,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="check outer Block1 bounds for BufferInfo, materials, Havok and other info tables")
     parser.add_argument("--mask", type=lambda s: int(s, 0), help="optional Helm's Deep gamemode mask; requires --deep")
     parser.add_argument("--json", action="store_true", help="machine-readable report")
+    parser.add_argument("--assume-gfx256", action="store_true",
+                        help="what-if: GFX Block registry 256-entry patch ACTIVE (unverified)")
+    parser.add_argument("--assume-gfx512", action="store_true",
+                        help="what-if: GFX Block registry 512-entry patch ACTIVE (unverified)")
     parser.add_argument("--assume-model4096", action="store_true",
                         help="what-if: 4096 ModelInfo registry patch ACTIVE (unverified)")
     parser.add_argument("--assume-texture8192", action="store_true",
@@ -428,6 +432,10 @@ def main(argv: list[str] | None = None) -> int:
         assumed_caps["textures"] = 0x2000
     if args.assume_effects2048:
         assumed_caps["effects"] = 0x800
+    if args.assume_gfx256:
+        assumed_caps["gfx_blocks"] = 0x100
+    if args.assume_gfx512:
+        assumed_caps["gfx_blocks"] = 0x200
     try:
         def check_one(pak: Path, bin_file: Path | None) -> PakReport:
             return inspect_pak(pak, args.deep or args.collision_preservation, args.mask, assumed_caps,

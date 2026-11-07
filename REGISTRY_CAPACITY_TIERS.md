@@ -41,6 +41,6 @@ The `--assume-*` flags are **hypothetical** and do not prove successful patch in
 
 ## Other outstanding pool ceilings
 
-GFX block registry starts at 64. Its `0x40` reserve is shared with another callsite, so patching that global helper blindly would affect an unrelated data structure. PField factory's early raw-count guard is 4096 but the retail allocation size is **not** proven by the Magellan stand-in; it is not safe to label it 4096 or simply increase the guard. Neither GFX nor PField is changed in this tier patch.
+GFX block registry starts at 64. Its `0x40` reserve is shared with another callsite, so patching that global helper blindly would affect an unrelated data structure. PField factory's early raw-count guard is 4096 but the retail allocation size is **not** proven by the Magellan stand-in; it is not safe to label it 4096 or simply increase the guard. GFX has since been expanded independently (opt-in 256/512) via the isolated constructor CALL + factory guard trampolines described in GFX_REGISTRY_512.md. PField remains unchanged in this tier patch.
 
 No Helm's Deep + Isengard runtime evidence is claimed until a live merged level loads, registers these entries, and reloads without memory corruption.
