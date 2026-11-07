@@ -23,6 +23,7 @@ set(PROXY_SOURCES
   src/effect_registry_1024.cpp
   src/gfx_registry_512.cpp
   src/auxiliary_registry_8192.cpp
+  src/device_reset_pool_4096.cpp
   src/geometry_budget_telemetry.cpp
   src/retail_texture_vault.cpp
 )
