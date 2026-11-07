@@ -14,8 +14,9 @@ Standalone, public **x86 Direct3D 9 proxy** for *The Lord of the Rings: Conquest
 | **GFX blocks** | **64** | **256 or 512** |
 | **Resource Other (+0xF4)** | **2048** | **4096 or 8192** |
 | **PFields (+0x114)** | **4096** | **8192** |
+| **D3D9 device-reset list** | **64** | **1024 or 4096** |
 
-All six registry groups are **OFF by default** and guarded by exact x86 executable opcode fingerprints. Other unverified Havok or temporary geometry pool caps are not automatically modified. A successful DLL build or synthetic test does **not** prove an expanded map runs correctly in the game.
+The six registries and separate D3D9 device-reset list are **OFF by default** and gated by original x86 instruction fingerprints. Havok and transient geometry pools are not modified. A successful DLL build or synthetic test does **not** prove an expanded map runs correctly in the game.
 
 ```ini
 [StaticMapPools]
@@ -31,6 +32,8 @@ ExpandGfx512=0
 ExpandResourceOther4096=0
 ExpandResourceOther8192=0
 ExpandPFields8192=0
+ExpandDeviceResetResources1024=0
+ExpandDeviceResetResources4096=0
 GeometryBudget=1
 ```
 
@@ -80,3 +83,7 @@ Set `ExpandModels4096=1`, `ExpandTextures8192=1`, and/or `ExpandEffects2048=1` u
 ### Resource Other and PField native pool expansions
 
 Recovered x86 code proves the **true retail PField reserve is 4096** rather than the 512 temporary stand-in in an older Magellan port. Independent opt-in patch flags now expand the native +0xF4 8-byte resource registry from **2048→4096/8192** and the +0x114 12-byte PField registry from **4096→8192**. Each modifies its own existing allocator reserve immediate and matching factory guard, preserving the original engine allocation/free implementation and exact version gating. More: [AUXILIARY_REGISTRY_8192.md](AUXILIARY_REGISTRY_8192.md).
+
+### Device-reset resource pool (separate from static geometry)
+
+The original 64-pointer list is allocated by the game at 0x00967C27, registered at 0x0068D892 and freed at 0x0096F72D. New opt-in C++ code expands to 1024 or 4096 pointers and guards the formerly unchecked append. If the CRT already allocated 64 slots, it grows the same native allocation through the game's original 0x0067E662 realloc when there are no live entries. It does not modify managed VB/IB or Havok. See DEVICE_RESET_POOL_4096.md for exact machine code and limits. Game runtime validation is pending.
