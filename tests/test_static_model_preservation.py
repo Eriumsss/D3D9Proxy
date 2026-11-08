@@ -120,6 +120,14 @@ class StaticModelPreservation(unittest.TestCase):
                               (DONOR,1,True,0xC0FFEE02)])
         self.assertEqual(self.audit({DONOR})["ambiguous_key"],1)
 
+    def test_donor_crc_already_host_is_not_fake_import_proof(self):
+        pak_file(self.donor,[(HOST,3,True,0xC0FFEE03)])
+        # The merged level still has host CRC, but that alone does not
+        # establish the donor's separate model/geometry was imported.
+        self.assertEqual(self.audit({HOST})["target_already_host"],1)
+        self.assertEqual(self.run_cli("--static-model-preservation",
+                                     "--required-donor-model",hex(HOST)),1)
+
     def test_renamed_selected_donor_requires_explicit_map(self):
         pak_file(self.merged,[(HOST,3,True,0xC0FFEE01),
                               (RENAMED,7,True,0xC0FFEE02)])
