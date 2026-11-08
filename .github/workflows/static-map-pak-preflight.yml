@@ -7,6 +7,9 @@ on:
       - 'tests/test_static_geometry_preflight.py'
       - 'tests/test_runtime_pool_pressure.py'
       - 'tests/test_havok_world_lifecycle.py'
+      - 'tests/test_havok_va_correlation.py'
+      - 'tools/analyze_havok_va_correlation.py'
+      - 'HAVOK_VA_CORRELATION.md'
       - 'tools/analyze_havok_world.py'
       - 'HAVOK_WORLD_LIFECYCLE.md'
       - 'tests/test_animation_blend_pool.py'
@@ -78,6 +81,9 @@ on:
       - 'tests/test_static_geometry_preflight.py'
       - 'tests/test_runtime_pool_pressure.py'
       - 'tests/test_havok_world_lifecycle.py'
+      - 'tests/test_havok_va_correlation.py'
+      - 'tools/analyze_havok_va_correlation.py'
+      - 'HAVOK_VA_CORRELATION.md'
       - 'tools/analyze_havok_world.py'
       - 'HAVOK_WORLD_LIFECYCLE.md'
       - 'tests/test_animation_blend_pool.py'
@@ -149,7 +155,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Syntax check
-        run: python3 -m py_compile tools/analyze_havok_world.py tests/test_havok_world_lifecycle.py tools/analyze_runtime_pressure.py tests/test_virtual_address_pressure.py tools/pak_pool_preflight.py tests/test_pak_pool_preflight.py tests/test_static_geometry_preflight.py tests/test_native_table_preflight.py tests/test_model_bin_link_preflight.py tools/native_geometry_links.py tools/native_collision_links.py tests/test_native_collision_links.py tools/native_collision_provenance.py tests/test_collision_provenance.py
+        run: python3 -m py_compile tools/analyze_havok_va_correlation.py tests/test_havok_va_correlation.py tools/analyze_havok_world.py tests/test_havok_world_lifecycle.py tools/analyze_runtime_pressure.py tests/test_virtual_address_pressure.py tools/pak_pool_preflight.py tests/test_pak_pool_preflight.py tests/test_static_geometry_preflight.py tests/test_native_table_preflight.py tests/test_model_bin_link_preflight.py tools/native_geometry_links.py tools/native_collision_links.py tests/test_native_collision_links.py tools/native_collision_provenance.py tests/test_collision_provenance.py
       - name: Synthetic PC PAK and pool-cap regression tests
         run: python3 -m unittest discover -s tests -p test_pak_pool_preflight.py -v
       - name: Synthetic PC PAK Block2 static geometry buffer validation
@@ -170,6 +176,8 @@ jobs:
         run: python3 -m unittest discover -s tests -p test_runtime_pool_pressure.py -v
       - name: Read-only Havok world ownership lifecycle and offline CSV analyzer
         run: python3 -m unittest discover -s tests -p test_havok_world_lifecycle.py -v
+      - name: Session-safe Havok world and VA pressure correlation contracts
+        run: python3 -m unittest discover -s tests -p test_havok_va_correlation.py -v
       - name: Fixed animation blend slot pressure monitor and parser contracts
         run: python3 -m unittest discover -s tests -p test_animation_blend_pool.py -v
       - name: 32-bit VA pressure and offline diagnostics regression
