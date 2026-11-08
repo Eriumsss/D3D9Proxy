@@ -30,6 +30,10 @@ models, this scans native 256-byte ModelInfo rows from Block1.
   key if it has render meshes.
 - Donor models **not explicitly selected** are not presumed imported. Import
   means selected static assets, not the donor's whole mission.
+- An explicitly selected donor CRC that maps to a key **already present in
+  the host** is rejected as unverifiable: the host's existing model cannot
+  prove that a separate donor model was imported. Use an actual distinct
+  imported destination CRC where appropriate.
 - The optional key-map JSON is `{"0xDONOR_CRC": "0xMERGED_CRC"}`
   for models intentionally renamed when imported.
 - These are identity, mask and mesh-presence assertions, **not** evidence
