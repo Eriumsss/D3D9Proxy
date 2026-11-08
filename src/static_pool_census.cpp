@@ -47,6 +47,10 @@ struct Cell {
 static volatile LONG g_started;
 static volatile LONG g_enabled;
 static char g_output[MAX_PATH];
+static char g_pressureOutput[MAX_PATH];
+static unsigned g_resetPeaks[3]={0,0,0};
+static unsigned g_clipPeak=0;
+static unsigned __int64 g_innerPairsPeak=0;
 static unsigned g_high[kRegistryCount];
 static DWORD g_lastLog;
 static uintptr_t g_lastLevel;
@@ -143,6 +147,146 @@ static void DumpCodeSiteFingerprints(const char* gameDir) {
 static void Header(FILE* f) {
     fputs("time_ms,level_object,registry,entry_count,capacity,peak_count,expected_retail_capacity,entries_ptr,valid,dyn_geom_pool,dyn_a_count,dyn_c_count,dyn_phase\n",f);
 }
+// Extra READ-ONLY telemetry. Do not confuse these runtime counts with the
+// on-disk PAK/BIN tables or promise that a config toggle actually activated.
+// Three independent D3D reset lists hold u32 pointer bases and u32 counts.
+// Their physical allocated byte sizes are not exposed by the original engine;
+// therefore the CSV deliberately reports NO invented numeric capacity here.
+struct ResetList {
+    const char* name;
+    DWORD baseCell;
+    DWORD countCell;
+};
+static const ResetList kResetLists[3]={
+    {"device_reset",0x00A41538,0x00A4153C},
+    {"dynamic_vb",0x00A41520,0x00A41524},
+    {"dynamic_ib",0x00A4152C,0x00A41530}
+};
+static const DWORD kAnimBindRegCell=0x00CD7E5C; // MgAgBindReg*
+static const DWORD kAnimBindRegVtable=0x009C7A1C;
+static const unsigned kMaxObservePairs=8192;
+
+struct ResetSample {
+    unsigned count;
+    unsigned valid;
+};
+static ResetSample ObserveReset(const ResetList& list) {
+    ResetSample result={0,0};
+    DWORD base=0,count=0;
+    if (!ReadDword(list.baseCell,base) || !ReadDword(list.countCell,count))
+        return result;
+    // 4096 is a supported cap, not a proof of the active allocation.
+    // Reject pathological/corrupted counts without following any pointers.
+    if (count>0x10000 || (count!=0 && base==0))
+        return result;
+    result.count=count;
+    result.valid=1;
+    return result;
+}
+
+struct BindSample {
+    unsigned present;
+    unsigned valid;
+    unsigned clips;
+    unsigned clipCap;
+    unsigned innerMaps;
+    unsigned __int64 innerPairs;
+    unsigned maxInnerCount;
+    unsigned invalidInner;
+};
+static BindSample ObserveBindings() {
+    BindSample out={0,0,0,0,0,0,0,0};
+    DWORD reg=0;
+    if (!ReadDword(kAnimBindRegCell,reg) || reg==0)
+        return out;
+    out.present=1;
+    DWORD vt=0,counts=0,base=0;
+    if (!ReadDword((uintptr_t)reg,vt) ||
+        !ReadDword((uintptr_t)reg+0x0C,counts) ||
+        !ReadDword((uintptr_t)reg+0x10,base) ||
+        vt!=kAnimBindRegVtable)
+        return out;
+    const short count=(short)(counts&0xffff);
+    const short cap=(short)(counts>>16);
+    if (count<0 || cap<0 || count>cap ||
+        (unsigned)cap>kMaxObservePairs ||
+        (count>0 && !base))
+        return out;
+    out.valid=1;
+    out.clips=(unsigned)count;
+    out.clipCap=(unsigned)cap;
+    // Outer list: 8-byte records {CRC key, MgAgBindMap*}. Inspect only the
+    // binding map pointer in the second dword. No writes, allocations or
+    // runtime hooks. Validate EVERY pointer before reading the next one.
+    for (unsigned i=0;i<out.clips;++i) {
+        DWORD map=0,packed=0,pairs=0;
+        const uintptr_t slot=(uintptr_t)base+(uintptr_t)i*8u;
+        if (!ReadDword(slot+4,map) || !map ||
+            !ReadDword((uintptr_t)map,packed) ||
+            !ReadDword((uintptr_t)map+4,pairs)) {
+            ++out.invalidInner;
+            continue;
+        }
+        const short n=(short)(packed&0xffff);
+        const short capacity=(short)(packed>>16);
+        if (n<0 || capacity<0 || n>capacity ||
+            (unsigned)capacity>kMaxObservePairs ||
+            (n>0 && !pairs)) {
+            ++out.invalidInner;
+            continue;
+        }
+        // If this map holds bindings, ensure the LAST 8-byte pair is
+        // presently readable too. A concurrent level teardown might
+        // invalidate the pointer at any instant; CanRead+SEH are guards,
+        // not a claim of an atomic registry snapshot.
+        if (n>0 && !CanRead((uintptr_t)pairs,(size_t)n*8u)) {
+            ++out.invalidInner;
+            continue;
+        }
+        ++out.innerMaps;
+        out.innerPairs+=(unsigned)n;
+        if ((unsigned)n>out.maxInnerCount)
+            out.maxInnerCount=(unsigned)n;
+    }
+    return out;
+}
+static void PressureHeader(FILE* f) {
+    fputs("time_ms,level_object,bind_present,bind_valid,clip_count,clip_cap,"
+          "clip_peak,inner_maps,inner_pairs,inner_pairs_peak,max_inner_count,"
+          "invalid_inner_maps,device_reset_count,device_reset_peak,device_reset_valid,"
+          "dynamic_vb_count,dynamic_vb_peak,dynamic_vb_valid,"
+          "dynamic_ib_count,dynamic_ib_peak,dynamic_ib_valid\n",f);
+}
+static void LogPressure(DWORD now,DWORD levelRaw) {
+    if (!g_pressureOutput[0]) return;
+    const BindSample binding=ObserveBindings();
+    const ResetSample dev=ObserveReset(kResetLists[0]);
+    const ResetSample vb=ObserveReset(kResetLists[1]);
+    const ResetSample ib=ObserveReset(kResetLists[2]);
+    const ResetSample rows[3]={dev,vb,ib};
+    if (binding.valid && binding.clips>g_clipPeak)
+        g_clipPeak=binding.clips;
+    if (binding.valid && binding.innerPairs>g_innerPairsPeak)
+        g_innerPairsPeak=binding.innerPairs;
+    for (unsigned i=0;i<3;++i)
+        if (rows[i].valid && rows[i].count>g_resetPeaks[i])
+            g_resetPeaks[i]=rows[i].count;
+    FILE* f=NULL;
+    if (fopen_s(&f,g_pressureOutput,"ab+")!=0 || !f) return;
+    if (fseek(f,0,SEEK_END)==0 && ftell(f)==0)
+        PressureHeader(f);
+    fprintf(f,"%lu,%08lX,%u,%u,%u,%u,%u,%u,%llu,%llu,%u,%u,"
+              "%u,%u,%u,%u,%u,%u,%u,%u,%u\n",
+            (unsigned long)now,(unsigned long)levelRaw,
+            binding.present,binding.valid,binding.clips,binding.clipCap,
+            g_clipPeak,binding.innerMaps,binding.innerPairs,g_innerPairsPeak,
+            binding.maxInnerCount,binding.invalidInner,
+            dev.count,g_resetPeaks[0],dev.valid,
+            vb.count,g_resetPeaks[1],vb.valid,
+            ib.count,g_resetPeaks[2],ib.valid);
+    fclose(f);
+}
+
 static void Poll() {
     DWORD levelRaw=0, poolRaw=0;
     if (!ReadDword(kLevelObjectCell,levelRaw)) return;
@@ -151,6 +295,9 @@ static void Poll() {
     if (level != g_lastLevel) {
         g_lastLevel=level;
         memset(g_high,0,sizeof(g_high));
+        memset(g_resetPeaks,0,sizeof(g_resetPeaks));
+        g_clipPeak=0;
+        g_innerPairsPeak=0;
         g_lastLog=0;
     }
     if (!level) return; // no active level object
@@ -170,6 +317,7 @@ static void Poll() {
     DWORD now=GetTickCount();
     if (g_lastLog && (DWORD)(now-g_lastLog)<kLogMs) return;
     g_lastLog=now;
+    LogPressure(now,levelRaw); // read-only, sampled at the same 2s cadence
     FILE* f=NULL;
     if (fopen_s(&f,g_output,"ab+")!=0 || !f) return;
     if (fseek(f,0,SEEK_END)==0 && ftell(f)==0) Header(f);
@@ -207,6 +355,8 @@ void OC_StaticPoolCensus_Init() {
     if (!GetPrivateProfileIntA("StaticMapPools","Monitor",0,ini)) return;
     if (_snprintf_s(g_output,sizeof(g_output),_TRUNCATE,
                     "%sstatic_map_pools.csv",exe)<0) return;
+    if (_snprintf_s(g_pressureOutput,sizeof(g_pressureOutput),_TRUNCATE,
+                    "%sruntime_pool_pressure.csv",exe)<0) return;
     // Evidence only: dump constructor and factory guard opcode windows, which
     // the next patch must verify against the Ghidra database before writes.
     DumpCodeSiteFingerprints(exe);
