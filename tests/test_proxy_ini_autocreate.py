@@ -20,7 +20,7 @@ WORKFLOW=(ROOT/".github/workflows/static-map-pak-preflight.yml").read_text(encod
 README=(ROOT/"README.md").read_text(encoding="utf-8")
 
 def default_ini():
-    match=re.search(r"static const char kDefaultIni\[\]\s*=\s*(.*?);",CPP,re.S)
+    match=re.search(r"static const char kDefaultIni\[\]\s*=\s*(.*?)\n\nstatic void Report",CPP,re.S)
     if not match:
         raise AssertionError("missing embedded default proxy.ini")
     tokens=re.findall(r'"(?:\\.|[^"\\])*"',match.group(1))
