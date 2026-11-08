@@ -12,6 +12,7 @@ Standalone, public **x86 Direct3D 9 proxy** for *The Lord of the Rings: Conquest
 | TextureInfo | 2048 | 4096 or **8192** |
 | EffectInfo | 512 | 1024 or **2048** |
 | **GFX blocks** | **64** | **256 or 512** |
+| **Animation clip/skeleton binding caches (two-level)** | **64 each** | **256 or 512 each** |
 | **Resource Other (+0xF4)** | **2048** | **4096 or 8192** |
 | **PFields (+0x114)** | **4096** | **8192** |
 | **D3D9 device-reset list** | **64** | **1024 or 4096** |
@@ -31,6 +32,8 @@ ExpandEffects1024=0
 ExpandEffects2048=0
 ExpandGfx256=0
 ExpandGfx512=0
+ExpandAnimationBindingCache256=0
+ExpandAnimationBindingCache512=0
 ExpandResourceOther4096=0
 ExpandResourceOther8192=0
 ExpandPFields8192=0
@@ -103,3 +106,7 @@ The original 64-pointer list is allocated by the game at 0x00967C27, registered 
 ### Dynamic VB/IB native reset-list pool expansion
 
 Two independent 64-pointer arrays ([0x00A41520] for dynamic VB, [0x00A4152C] for dynamic IB) have unchecked original register writes. Opt-in `ExpandDynamicBufferReset1024=1` or `ExpandDynamicBufferReset4096=1` increases BOTH original allocation and registration limits, using the existing native allocator and isolated x86 guard trampolines. Neither changes the generic device-reset resource list, Havok, or managed static geometry buffers. See [DYNAMIC_BUFFER_RESET_POOLS_4096.md](DYNAMIC_BUFFER_RESET_POOLS_4096.md). The automatic `proxy.ini` generator from PR #7 includes both options, disabled by default. Gameplay reset/reload validation is still required.
+
+### Native two-level animation binding cache limit
+
+The retail animation cache contains two independent 64-entry SmallVec8 pair arrays: outer clip-CRC registration and inner skeleton-CRC binding maps. An opt-in x86 patch, `ExpandAnimationBindingCache256=1` or `ExpandAnimationBindingCache512=1`, expands both using the original native `FUN_00EA3A30` reserve implementation, preserving the registry's original `FUN_0089F25C` initialization and existing append/search/sort/unload logic. The separate GFX pool also calls the old `FUN_0040B4CB` allocator, so **only the animation callsite is redirected**; the shared allocator remains unchanged. The animation patch initializes **after the GFX patch preflight**. See [ANIMATION_BINDING_CACHE_512.md](ANIMATION_BINDING_CACHE_512.md). This is not a Havok allocator, not the 1024-slot animation blend pool, and is unverified in actual gameplay.

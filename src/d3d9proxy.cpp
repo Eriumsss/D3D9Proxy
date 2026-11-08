@@ -13,6 +13,7 @@
 #include "texture_registry_4096.h"
 #include "effect_registry_1024.h"
 #include "gfx_registry_512.h"
+#include "animation_binding_cache_512.h"
 #include "auxiliary_registry_8192.h"
 #include "device_reset_pool_4096.h"
 #include "dynamic_buffer_reset_pools_4096.h"
@@ -236,6 +237,7 @@ static BOOL CALLBACK ProxyApplyPatchesOnce(PINIT_ONCE, PVOID, PVOID*) {
     OC_TextureRegistry4096_Init(); // opt-in: two texture vectors and matching factory guard
     OC_EffectRegistry1024_Init(); // opt-in: three FX vectors and the matching factory guard
     OC_GfxRegistry512_Init(); // opt-in: ONLY level GFX vector + matching 64-entry factory guard
+    OC_AnimationBindingCache512_Init(); // opt-in: independent clip + skeleton cache cap 64->256/512 AFTER GFX validation
     OC_AuxiliaryRegistry8192_Init(); // opt-in: +0xF4 ResourceOther and +0x114 PField native reserve+guard
     OC_DeviceResetPool4096_Init(); // opt-in: native D3D reset list 64 to 1024/4096, guarded append
     OC_DynamicBufferResetPools4096_Init(); // opt-in: both dynamic VB/IB reset lists 64 to 1024/4096
