@@ -22,6 +22,18 @@ static const uintptr_t kLevelObjectCell = 0x00CD7EA0;
 static const uintptr_t kDynamicGeometryPoolCell = 0x00CD80D4;
 static const DWORD kPollMs = 250;
 static const DWORD kLogMs = 2000;
+// Fixed retail animation blend slots, NOT the separate animation event pool
+// at 0x00CD9970 or the 512-entry clip/skeleton binding cache.
+// MgAgBlendEval.inc / FUN_0045549c: slot_base=arena+0x9004,
+// next-free counter=slot_base+1024*0xF8. The counter immediately follows
+// the original array. Never raise the 0x400 guard without relocating it.
+static const uintptr_t kBlendRootCell = 0x00CD7E7C;
+static const uintptr_t kBlendGuardSite = 0x004554B1;
+static const uintptr_t kBlendSlotsOffset = 0x9004;
+static const uintptr_t kBlendCounterOffset = 0x3E000;
+static const unsigned kBlendSlotStride = 0xF8;
+static const unsigned kBlendRetailCapacity = 0x400;
+static const DWORD kBlendLogMs = 1000;
 static const unsigned kMaxReasonableCount = 0x4000;
 
 struct Registry {
@@ -49,6 +61,12 @@ static volatile LONG g_enabled;
 static char g_output[MAX_PATH];
 static char g_pressureOutput[MAX_PATH];
 static char g_vaOutput[MAX_PATH];
+static char g_blendOutput[MAX_PATH];
+static bool g_staticMonitorEnabled=false;
+static bool g_blendMonitorEnabled=false;
+static DWORD g_lastBlendLog=0;
+static DWORD g_lastBlendArena=0;
+static unsigned g_blendPeak=0;
 static unsigned g_resetPeaks[3]={0,0,0};
 static unsigned g_clipPeak=0;
 static unsigned __int64 g_innerPairsPeak=0;
@@ -117,7 +135,8 @@ static const CodeSite kCodeSites[] = {
     {"texture_factory_guard",0x00876B73},
     {"effect_ctor_A",0x00876E43}, {"effect_ctor_B",0x00876E4E},
     {"effect_ctor_C",0x00876E59}, {"effect_factory_guard",0x008773A0},
-    {"gfx_ctor",0x00876E6F}, {"gfx_factory_guard",0x00875ABE}
+    {"gfx_ctor",0x00876E6F}, {"gfx_factory_guard",0x00875ABE},
+    {"blend_slot_alloc",0x0045549C}, {"blend_slot_guard",0x004554B1}
 };
 static void DumpCodeSiteFingerprints(const char* gameDir) {
     char path[MAX_PATH]={0};
@@ -383,7 +402,79 @@ static void LogVirtualAddressPressure(DWORD tick,DWORD levelRaw) {
     fclose(f);
 }
 
+
+// Observe the allocator next-free counter, not the number of live animations.
+// An invalid guard, stale pointer or concurrent arena replacement produces
+// an INVALID sample instead of inventing a credible-looking pool count.
+static void PollBlend() {
+    if (!g_blendMonitorEnabled) return;
+    const DWORD now=GetTickCount();
+    if (g_lastBlendLog && (DWORD)(now-g_lastBlendLog)<kBlendLogMs) return;
+    g_lastBlendLog=now;
+
+    DWORD root=0, arena=0, index=0, guardWord=0, guardLimit=0;
+    uintptr_t slots=0, counter=0;
+    bool valid=false;
+    const char* status="UNVERIFIED_GUARD";
+    // 81 FE 00 04 00 00 = CMP ESI,0x400 in the known retail executable.
+    // memorypatch.cpp Patch 29 MUST remain disabled. A different guard
+    // is recorded, never used to justify observing or expanding the array.
+    if (ReadDword(kBlendGuardSite,guardWord) &&
+        ReadDword(kBlendGuardSite+2,guardLimit) &&
+        (guardWord&0xFFFFu)==0xFE81u &&
+        guardLimit==kBlendRetailCapacity) {
+        status="NO_ROOT";
+        if (ReadDword(kBlendRootCell,root) && root) {
+            status="NO_ARENA";
+            if (ReadDword((uintptr_t)root+0x0C,arena) && arena) {
+                status="BAD_RANGE";
+                const uintptr_t span=kBlendSlotsOffset+kBlendCounterOffset+sizeof(DWORD);
+                if ((uintptr_t)arena<=UINTPTR_MAX-span) {
+                    slots=(uintptr_t)arena+kBlendSlotsOffset;
+                    counter=slots+kBlendCounterOffset;
+                    status="UNREADABLE";
+                    if (CanRead(slots,kBlendCounterOffset+sizeof(DWORD)) &&
+                        ReadDword(counter,index)) {
+                        DWORD sameRoot=0, sameArena=0;
+                        status="RACED";
+                        if (ReadDword(kBlendRootCell,sameRoot) && sameRoot==root &&
+                            ReadDword((uintptr_t)root+0x0C,sameArena) && sameArena==arena) {
+                            status="OUT_OF_RANGE";
+                            if (index<=kBlendRetailCapacity) {
+                                valid=true;
+                                status=index==kBlendRetailCapacity ? "AT_CAP" :
+                                       (index>=kBlendRetailCapacity-16 ? "NEAR_CAP" : "OK");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (arena!=g_lastBlendArena) {
+        g_lastBlendArena=arena;
+        g_blendPeak=0;
+    }
+    if (valid && index>g_blendPeak) g_blendPeak=index;
+
+    FILE* f=NULL;
+    if (fopen_s(&f,g_blendOutput,"ab+")!=0 || !f) return;
+    if (fseek(f,0,SEEK_END)==0 && ftell(f)==0)
+        fputs("time_ms,root_ptr,arena_ptr,slot_base,counter_ptr,"
+              "slot_stride,retail_capacity,next_free_index,peak_next_free_index,"
+              "guard_limit,valid,status\n",f);
+    fprintf(f,"%lu,%08lX,%08lX,%08lX,%08lX,%u,%u,%lu,%u,%lu,%u,%s\n",
+            (unsigned long)now,(unsigned long)root,(unsigned long)arena,
+            (unsigned long)slots,(unsigned long)counter,
+            kBlendSlotStride,kBlendRetailCapacity,
+            (unsigned long)index,g_blendPeak,(unsigned long)guardLimit,
+            (unsigned)valid,status);
+    fclose(f);
+}
+
 static void Poll() {
+    PollBlend(); // valid even while level_object=0
+    if (!g_staticMonitorEnabled) return;
     DWORD levelRaw=0, poolRaw=0;
     if (!ReadDword(kLevelObjectCell,levelRaw)) return;
     ReadDword(kDynamicGeometryPoolCell,poolRaw);
@@ -460,13 +551,21 @@ void OC_StaticPoolCensus_Init() {
     slash[1]=0;
     char ini[MAX_PATH]={0};
     if (_snprintf_s(ini,sizeof(ini),_TRUNCATE,"%sproxy.ini",exe)<0) return;
-    if (!GetPrivateProfileIntA("StaticMapPools","Monitor",0,ini)) return;
-    if (_snprintf_s(g_output,sizeof(g_output),_TRUNCATE,
-                    "%sstatic_map_pools.csv",exe)<0) return;
-    if (_snprintf_s(g_pressureOutput,sizeof(g_pressureOutput),_TRUNCATE,
-                    "%sruntime_pool_pressure.csv",exe)<0) return;
-    if (_snprintf_s(g_vaOutput,sizeof(g_vaOutput),_TRUNCATE,
-                    "%svirtual_address_pressure.csv",exe)<0) return;
+    const bool staticOn=GetPrivateProfileIntA("StaticMapPools","Monitor",0,ini)!=0;
+    const bool blendOn=GetPrivateProfileIntA("StaticMapPools","BlendMonitor",0,ini)!=0;
+    if (!staticOn && !blendOn) return;
+    if (staticOn) {
+        if (_snprintf_s(g_output,sizeof(g_output),_TRUNCATE,
+                        "%sstatic_map_pools.csv",exe)<0) return;
+        if (_snprintf_s(g_pressureOutput,sizeof(g_pressureOutput),_TRUNCATE,
+                        "%sruntime_pool_pressure.csv",exe)<0) return;
+        if (_snprintf_s(g_vaOutput,sizeof(g_vaOutput),_TRUNCATE,
+                        "%svirtual_address_pressure.csv",exe)<0) return;
+    }
+    if (blendOn && _snprintf_s(g_blendOutput,sizeof(g_blendOutput),_TRUNCATE,
+                                "%sanimation_blend_pool.csv",exe)<0) return;
+    g_staticMonitorEnabled=staticOn;
+    g_blendMonitorEnabled=blendOn;
     // Evidence only: dump constructor and factory guard opcode windows, which
     // the next patch must verify against the Ghidra database before writes.
     DumpCodeSiteFingerprints(exe);
