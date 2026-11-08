@@ -48,6 +48,7 @@ static volatile LONG g_started;
 static volatile LONG g_enabled;
 static char g_output[MAX_PATH];
 static char g_pressureOutput[MAX_PATH];
+static char g_vaOutput[MAX_PATH];
 static unsigned g_resetPeaks[3]={0,0,0};
 static unsigned g_clipPeak=0;
 static unsigned __int64 g_innerPairsPeak=0;
@@ -296,6 +297,92 @@ static void LogPressure(DWORD now,DWORD levelRaw) {
     fclose(f);
 }
 
+// The registry can still load no additional geometry because this is an x86
+// PROCESS with a finite VA space. GlobalMemoryStatusEx is system-wide and
+// tells us nothing about the largest contiguous allocation THIS game can make.
+//
+// Walk committed/reserved/free VM regions via VirtualQuery. This is read-only.
+// It works before the first level object exists, including a stuck loader.
+// Use unsigned 64-bit counters to prevent 32-bit address-span arithmetic from
+// wrapping near the process's maximum application address.
+struct VaPressure {
+    unsigned valid;
+    DWORD minAddress;
+    DWORD maxAddress;
+    unsigned __int64 freeBytes;
+    unsigned __int64 reservedBytes;
+    unsigned __int64 committedBytes;
+    unsigned __int64 largestFreeBytes;
+    unsigned freeRegions;
+    unsigned reservedRegions;
+    unsigned committedRegions;
+};
+static VaPressure MeasureVirtualAddressPressure() {
+    VaPressure stats={};
+    SYSTEM_INFO info={};
+    GetSystemInfo(&info);
+    const uintptr_t minimum=(uintptr_t)info.lpMinimumApplicationAddress;
+    const uintptr_t maximum=(uintptr_t)info.lpMaximumApplicationAddress;
+    stats.minAddress=(DWORD)minimum;
+    stats.maxAddress=(DWORD)maximum;
+    if (!minimum || maximum<minimum) return stats;
+
+    const unsigned __int64 endExclusive=(unsigned __int64)maximum+1ULL;
+    uintptr_t current=minimum;
+    while ((unsigned __int64)current<endExclusive) {
+        MEMORY_BASIC_INFORMATION region={};
+        if (!VirtualQuery((LPCVOID)current,&region,sizeof(region)))
+            return stats; // valid=0: partial results cannot be trusted
+        const unsigned __int64 begin=(unsigned __int64)(uintptr_t)region.BaseAddress;
+        const unsigned __int64 rawEnd=begin+(unsigned __int64)region.RegionSize;
+        if (begin>(unsigned __int64)current ||
+            rawEnd<=(unsigned __int64)current ||
+            region.RegionSize==0)
+            return stats; // non-forward progress or invalid VM metadata
+        const unsigned __int64 next=rawEnd<endExclusive?rawEnd:endExclusive;
+        const unsigned __int64 bytes=next-(unsigned __int64)current;
+        switch (region.State) {
+        case MEM_FREE:
+            stats.freeBytes+=bytes;
+            ++stats.freeRegions;
+            if (bytes>stats.largestFreeBytes)
+                stats.largestFreeBytes=bytes;
+            break;
+        case MEM_RESERVE:
+            stats.reservedBytes+=bytes;
+            ++stats.reservedRegions;
+            break;
+        case MEM_COMMIT:
+            stats.committedBytes+=bytes;
+            ++stats.committedRegions;
+            break;
+        default:
+            return stats;
+        }
+        if (next==endExclusive) break;
+        current=(uintptr_t)next;
+    }
+    stats.valid=1;
+    return stats;
+}
+static void LogVirtualAddressPressure(DWORD tick,DWORD levelRaw) {
+    if (!g_vaOutput[0]) return;
+    const VaPressure stats=MeasureVirtualAddressPressure();
+    FILE* f=NULL;
+    if (fopen_s(&f,g_vaOutput,"ab+")!=0 || !f) return;
+    if (fseek(f,0,SEEK_END)==0 && ftell(f)==0)
+        fputs("time_ms,level_object,valid,minimum_address,maximum_address,"
+              "free_bytes,reserved_bytes,committed_bytes,largest_free_bytes,"
+              "free_regions,reserved_regions,committed_regions\n",f);
+    fprintf(f,"%lu,%08lX,%u,%08lX,%08lX,%llu,%llu,%llu,%llu,%u,%u,%u\n",
+            (unsigned long)tick,(unsigned long)levelRaw,stats.valid,
+            (unsigned long)stats.minAddress,(unsigned long)stats.maxAddress,
+            stats.freeBytes,stats.reservedBytes,stats.committedBytes,
+            stats.largestFreeBytes,
+            stats.freeRegions,stats.reservedRegions,stats.committedRegions);
+    fclose(f);
+}
+
 static void Poll() {
     DWORD levelRaw=0, poolRaw=0;
     if (!ReadDword(kLevelObjectCell,levelRaw)) return;
@@ -309,7 +396,17 @@ static void Poll() {
         g_innerPairsPeak=0;
         g_lastLog=0;
     }
-    if (!level) return; // no active level object
+    if (!level) {
+        // Crucial: record x86 address-space pressure EVEN WHEN NO LEVEL WAS
+        // CONSTRUCTED. An infinite loading screen may fail before all the
+        // other registry logs have a level pointer worth recording.
+        const DWORD now=GetTickCount();
+        if (!g_lastLog || (DWORD)(now-g_lastLog)>=kLogMs) {
+            g_lastLog=now;
+            LogVirtualAddressPressure(now,0);
+        }
+        return;
+    }
     Cell cells[kRegistryCount]={};
     for (unsigned i=0;i<kRegistryCount;++i) {
         ReadRegistry(level,kRegistries[i],cells[i]);
@@ -328,6 +425,7 @@ static void Poll() {
     if (g_lastLog && (DWORD)(now-g_lastLog)<kLogMs) return;
     g_lastLog=now;
     LogPressure(now,levelRaw); // write sampled peak + latest values every 2s
+    LogVirtualAddressPressure(now,levelRaw); // free/commit/fragmentation, including level
     FILE* f=NULL;
     if (fopen_s(&f,g_output,"ab+")!=0 || !f) return;
     if (fseek(f,0,SEEK_END)==0 && ftell(f)==0) Header(f);
@@ -367,6 +465,8 @@ void OC_StaticPoolCensus_Init() {
                     "%sstatic_map_pools.csv",exe)<0) return;
     if (_snprintf_s(g_pressureOutput,sizeof(g_pressureOutput),_TRUNCATE,
                     "%sruntime_pool_pressure.csv",exe)<0) return;
+    if (_snprintf_s(g_vaOutput,sizeof(g_vaOutput),_TRUNCATE,
+                    "%svirtual_address_pressure.csv",exe)<0) return;
     // Evidence only: dump constructor and factory guard opcode windows, which
     // the next patch must verify against the Ghidra database before writes.
     DumpCodeSiteFingerprints(exe);
