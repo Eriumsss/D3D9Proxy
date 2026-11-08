@@ -235,7 +235,10 @@ static const DWORD POOL_BASE_PTR = 0x00cd9970;
 static const DWORD POOL_FREELIST_PTR = 0x00cd996c;
 static const DWORD POOL_COUNT_PTR = 0x00cd9974;
 static const DWORD POOL_ENTRY_SIZE = 0x30;   // 48 bytes per entry
-static const DWORD POOL_MAX_ENTRIES = 0x1000; // 4096 entries (expanded to prevent exhaustion)
+// EXACT stock capacity. Previous 4096 assumption made freelist checks
+// accept pointers 147,456 bytes past the real 1024 x 0x30 retail arena.
+// A separate 1024 x 0xF8 blend pool is located at 0x004554B1.
+static const DWORD POOL_MAX_ENTRIES = 0x400; // 1024 anim-event records, NOT expanded
 
 // Pool validation result flags
 enum PoolValidationResult {
@@ -2525,6 +2528,17 @@ static const bool PATCH_30_ENABLED = true;   // Havok Debug Hook for FUN_008f7ec
 static const bool PATCH_31_ENABLED = true;   // Matrix Copy NULL/Invalid Pointer Check (FUN_00414aed)
 static const bool PATCH_33_ENABLED = true;   // WideList parser logger for FUN_0040b561 (crash @ 0x0040B605, EDX=0x15DE)
 
+// THESE TWO ARE NOT A MATCHED POOL EXTENSION. Patch 6 replaces the
+// [0xCD9970] anim-event arena and rewires one guard at 0x0088AA85.
+// Patch 29 patches 0x004554B1, which Magellan proves belongs to the
+// SEPARATE 1024 x 0xF8 BLEND-SLOT arena (whose counter follows its array).
+// Old Patch 6 also publishes a replacement arena without proving native
+// ownership or teardown. Compile-time fail CLOSED if either is re-enabled
+// by editing an old hardcoded bool. A complete extension needs isolated
+// native lifetime/ownership and all producer+consumer bound checks.
+static_assert(!PATCH_6_ENABLED, "Unsafe legacy anim-event pool overwrite is forbidden");
+static_assert(!PATCH_29_ENABLED, "Patch 29 targets blend slots, NOT anim events");
+
 // Note: Patch 31 counters are declared earlier (before crash handler) because
 // the crash handler logs them. See section above "Crash Handler".
 
@@ -2537,7 +2551,7 @@ static DWORD g_VertexBufferSize  = 0x10000000;  // 192 MB
 
 // Event/Effect Pool Limit
 // Original: 0x400 (1024) - Pool for game events/effects
-// EXPANDED: 0x1000 (4096) - Prevents pool exhaustion crash at frame ~5,884
+// An old 0x1000 proposal is UNSAFE: no live 4096-slot arena or owner proved.
 //
 // Pool exhaustion crash analysis:
 // - Game crashes at 0x004554CF in FUN_0045549c when pool count >= 1024
@@ -2549,7 +2563,7 @@ static DWORD g_VertexBufferSize  = 0x10000000;  // 192 MB
 //   3. Rebuild the free list at DAT_00cd996c
 //   4. Patch the limit check at 0x0088aa8b
 //   5. Patch the limit check at 0x004554b1 (Patch 29)
-static const DWORD g_EventPoolNewLimit = 0x400;  // 4096 (4x original)
+static const DWORD g_EventPoolNewLimit = 0x400;  // 1024 stock; legacy extension DISABLED
 static const DWORD g_EventPoolEntrySize = 0x30;   // 48 bytes per entry
 
 // ============================================================================
