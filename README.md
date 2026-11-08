@@ -114,3 +114,7 @@ The retail animation cache contains two independent 64-entry SmallVec8 pair arra
 ### Read-only native runtime pool pressure
 
 With [StaticMapPools] Monitor=1, the existing census worker writes runtime_pool_pressure.csv beside static_map_pools.csv. It samples the three native device-reset registration lists, animation clip/skeleton binding counts, per-level high-water marks and validity flags. This does not prove an Expand* patch actually activated. See [RUNTIME_POOL_PRESSURE.md](RUNTIME_POOL_PRESSURE.md) for layouts, fields and limitations.
+
+### x86 virtual-address pressure and offline triage
+
+With `[StaticMapPools] Monitor=1`, the existing static census worker now writes `virtual_address_pressure.csv` even before a level exists. A read-only `VirtualQuery` scan approximately every two seconds reports process free/reserved/committed VA and the largest contiguous free region. Inspect it alongside registry/reset list CSVs with `python tools/analyze_runtime_pressure.py --game-dir "C:\Games\LOTR Conquest"` or add `--json` for a structured report. The default 128 MiB warning threshold is adjustable, NOT a verified engine limit. See [VIRTUAL_ADDRESS_PRESSURE.md](VIRTUAL_ADDRESS_PRESSURE.md).
