@@ -39,6 +39,14 @@ GeometryBudget=1
 
 Other included modules: read-only pool census, static buffer budget telemetry, optional texture memory vault, native PAK/BIN preflight tools, and retail tracing components. The existing diagnostics and auxiliary modules have been retained from the working OpenConquest proxy rather than discarded during the split.
 
+## Automatic proxy.ini configuration
+
+With the latest DLL, `proxy.ini` is **created automatically beside the game executable on the first `Direct3DCreate9` / `Direct3DCreate9Ex` call**. It is created before registry/pool options are read, in the EXE folder (not the current working directory), using a same-folder temporary file and an atomic non-replacing rename. An existing `proxy.ini` is **never overwritten, edited, or reset**. If the game folder is read-only, Windows will prevent creation; grant normal write access or create the file manually.
+
+All experimental `Expand*` switches start at `0` for safety. To test a verified-executable capacity patch, open the generated file and set the desired high-tier key to `1`; for example `ExpandModels4096=1`. Read-only `Monitor=1` and `GeometryBudget=1` diagnostics are enabled in the template. No map importer, second-world loader, Havok hard limit or RTX Remix is enabled automatically.
+
+The generated file includes current model/texture/effect/GFX/Resource Other/PField/device-reset keys and the future dynamic VB/IB recreate keys. Existing custom `proxy.ini` files are retained verbatim even if missing newer options. `[RetailHeapExtender]` and `[WorldResourceMemory]` experimental switches also default off.
+
 ## Build
 
 Requires **Windows**, the **MSVC x86 toolchain** and Windows SDK with D3D9 import libraries.
