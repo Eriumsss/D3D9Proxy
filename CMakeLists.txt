@@ -17,6 +17,7 @@ set(PROXY_SOURCES
   src/crowd_event_handler.cpp
   src/retail_fn_trace.cpp
   src/retail_heap_extender.cpp
+  src/proxy_config.cpp
   src/static_pool_census.cpp
   src/model_registry_2048.cpp
   src/texture_registry_4096.cpp
