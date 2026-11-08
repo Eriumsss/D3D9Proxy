@@ -43,6 +43,14 @@ GeometryBudget=1
 
 Other included modules: read-only pool census, static buffer budget telemetry, optional texture memory vault, native PAK/BIN preflight tools, and retail tracing components. The existing diagnostics and auxiliary modules have been retained from the working OpenConquest proxy rather than discarded during the split.
 
+## Automatic proxy.ini configuration
+
+With the latest DLL, `proxy.ini` is **created automatically beside the game executable on the first `Direct3DCreate9` / `Direct3DCreate9Ex` call**. It is created before registry/pool options are read, in the EXE folder (not the current working directory), using a same-folder temporary file and an atomic non-replacing rename. An existing `proxy.ini` is **never overwritten, edited, or reset**. If the game folder is read-only, Windows will prevent creation; grant normal write access or create the file manually.
+
+All experimental `Expand*` switches start at `0` for safety. To test a verified-executable capacity patch, open the generated file and set the desired high-tier key to `1`; for example `ExpandModels4096=1`. Read-only `Monitor=1` and `GeometryBudget=1` diagnostics are enabled in the template. No map importer, second-world loader, Havok hard limit or RTX Remix is enabled automatically.
+
+The generated file includes current model/texture/effect/GFX/Resource Other/PField/device-reset keys and the future dynamic VB/IB recreate keys. Existing custom `proxy.ini` files are retained verbatim even if missing newer options. `[RetailHeapExtender]` and `[WorldResourceMemory]` experimental switches also default off.
+
 ## Build
 
 Requires **Windows**, the **MSVC x86 toolchain** and Windows SDK with D3D9 import libraries.
@@ -94,4 +102,4 @@ The original 64-pointer list is allocated by the game at 0x00967C27, registered 
 
 ### Dynamic VB/IB native reset-list pool expansion
 
-Two independent 64-pointer arrays ([0x00A41520] for dynamic VB, [0x00A4152C] for dynamic IB) have unchecked original register writes. Opt-in ExpandDynamicBufferReset1024=1 or ExpandDynamicBufferReset4096=1 increases BOTH original allocation and registration limits, using the existing native allocator and isolated x86 guard trampolines. Neither changes the generic device-reset resource list (PR #4), Havok, or managed static geometry buffers. Consult DYNAMIC_BUFFER_RESET_POOLS_4096.md. As with all pool patches, gameplay reset/reload validation is still required.
+Two independent 64-pointer arrays ([0x00A41520] for dynamic VB, [0x00A4152C] for dynamic IB) have unchecked original register writes. Opt-in `ExpandDynamicBufferReset1024=1` or `ExpandDynamicBufferReset4096=1` increases BOTH original allocation and registration limits, using the existing native allocator and isolated x86 guard trampolines. Neither changes the generic device-reset resource list, Havok, or managed static geometry buffers. See [DYNAMIC_BUFFER_RESET_POOLS_4096.md](DYNAMIC_BUFFER_RESET_POOLS_4096.md). The automatic `proxy.ini` generator from PR #7 includes both options, disabled by default. Gameplay reset/reload validation is still required.

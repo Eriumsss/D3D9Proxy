@@ -16,6 +16,7 @@
 #include "auxiliary_registry_8192.h"
 #include "device_reset_pool_4096.h"
 #include "dynamic_buffer_reset_pools_4096.h"
+#include "proxy_config.h"
 #include "geometry_budget_telemetry.h"
 
 // The frame tracer (F11) sees every draw but none of the code behind it. The
@@ -227,6 +228,9 @@ static bool LoadRealD3D9() {
 // bool was racy and the Ex path skipped patch initialization entirely.
 static INIT_ONCE g_PatchesOnce = INIT_ONCE_STATIC_INIT;
 static BOOL CALLBACK ProxyApplyPatchesOnce(PINIT_ONCE, PVOID, PVOID*) {
+    // On the FIRST D3D9 entry, create the missing config BEFORE any subsystem
+    // reads its keys. Never do file I/O inside the Windows loader lock.
+    OC_ProxyConfig_Ensure();
     OC_HeapExt_Init(); // opt-in, fingerprinted; no .text changes
     OC_ModelRegistry2048_Init(); // opt-in: guarded registry+factory cap patch, before pool census
     OC_TextureRegistry4096_Init(); // opt-in: two texture vectors and matching factory guard
