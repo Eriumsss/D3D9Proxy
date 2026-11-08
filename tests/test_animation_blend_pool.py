@@ -66,7 +66,8 @@ class FixedBlendPool(unittest.TestCase):
     def test_switch_does_not_break_normal_monitor_or_start_new_thread(self):
         self.assertIn('"StaticMapPools","Monitor",0,ini)',SRC)
         self.assertIn('"StaticMapPools","BlendMonitor",0,ini)',SRC)
-        self.assertIn("if (!staticOn && !blendOn) return;",SRC)
+        self.assertIn("if (!staticOn && !blendOn && !physicsOn) return;",SRC)
+        self.assertIn("if (!g_staticMonitorEnabled) return;",SRC)
         self.assertIn("PollBlend(); // valid even while level_object=0",SRC)
         self.assertIn("if (!g_staticMonitorEnabled) return;",SRC)
         self.assertEqual(SRC.count("static DWORD WINAPI Worker("),1)
