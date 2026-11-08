@@ -15,6 +15,8 @@ MAX_SAMPLES = 25
 
 def snapshot_models(header: tuple[int, ...], block1: bytes) -> dict[int, list[dict[str, object]]]:
     count, start = header[44], header[69]
+    if not count:
+        return {}
     if start > len(block1) or count > (len(block1) - start) // MODEL_STRIDE:
         raise ValueError("ModelInfo table outside decoded Block1")
     result: dict[int, list[dict[str, object]]] = {}
