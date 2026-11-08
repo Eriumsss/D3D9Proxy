@@ -72,7 +72,7 @@ class NativeAnimEventPool(unittest.TestCase):
             "EventPoolMonitor",
             "animation_event_pool.csv",
             "UNVERIFIED_RETAIL_GUARD",
-            "COUNT_EXCEEDS_STOCK",
+            "COUNT_EXCEEDS_CAP",
             "BAD_FREE_HEAD",
             "AT_STOCK_CAP",
         ):
@@ -99,7 +99,7 @@ class NativeAnimEventPool(unittest.TestCase):
                 event(1000),
                 event(2000,"AT_STOCK_CAP",1024,1024),
                 event(3000,"UNVERIFIED_RETAIL_GUARD",4096,4096,valid=0),
-                event(4000,"COUNT_EXCEEDS_STOCK",1100,1100,valid=0),
+                event(4000,"COUNT_EXCEEDS_CAP",1100,1100,valid=0),
                 event(5000,"NEAR_STOCK_CAP",1009,1024)
             ])
             result=pressure.summarize(d)
