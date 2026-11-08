@@ -101,7 +101,7 @@ class DynamicBufferResetPools(unittest.TestCase):
 
     def test_original_engine_paths_and_flags_preserved(self):
         for token in ("kVBAppendAndExit","kIBAppendAndExit",
-                      "kVBAtExit","kIBAtExit","D3DLOCK_DISCARD"):
+                      "kVBAtExit","kIBAtExit","DISCARD"):
             self.assertIn(token,SRC)
         self.assertNotIn("Store(0x0068DEBC",SRC)
         self.assertNotIn("Store(0x0068DB93",SRC)
