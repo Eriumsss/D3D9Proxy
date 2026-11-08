@@ -143,3 +143,16 @@ This is **not** a live animation object count or runtime proof.
 
 See [ANIMATION_BLEND_POOL.md](ANIMATION_BLEND_POOL.md) for the mapped native
 layout, validation limitations, and the Helm's Deep + Isengard test plan.
+
+### Native collision footprint for combined static maps
+
+Run `tools/pak_pool_preflight.py --collision-links` for each base, donor and
+actual merged PAK to obtain **ModelInfo-reachable** ShapeInfo/HkShapeInfo
+descriptor counts and distinct Block1 convex/MOPP payload byte spans. The
+output separates referenced rows from orphan descriptor rows, avoids double
+counting shared disk spans, and marks incomplete/unknown shape layouts.
+
+Pair it with `--collision-preservation --require-base-collision
+--require-donor-collision` for collision payload integrity checks. These are
+**on-disk measurements**, never Havok runtime pool ceilings or physics proof.
+See [COLLISION_FOOTPRINT.md](COLLISION_FOOTPRINT.md).
