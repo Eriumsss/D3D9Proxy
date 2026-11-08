@@ -79,6 +79,62 @@ class CollisionReferences(unittest.TestCase):
         self.assertEqual(c["convex_spans"], 2)
         self.assertEqual(c["mopp_spans"], 3)
 
+    def test_reachable_collision_footprint_is_disk_bytes_not_havok_heap(self):
+        r = self.inspect()
+        self.assertFalse(r.failures)
+        c = r.collision_links
+        self.assertTrue(c["payload_footprint_valid"])
+        self.assertEqual(c["reachable_shape_records"], 2)
+        self.assertEqual(c["reachable_havok_children"], 3)
+        self.assertEqual(c["unreferenced_shape_records"], 0)
+        self.assertEqual(c["unreferenced_havok_children"], 0)
+        self.assertEqual(c["reachable_convex_children"], 1)
+        self.assertEqual(c["reachable_mopp_children"], 1)
+        self.assertEqual(c["reachable_descriptor_bytes"], 2 * 124 + 3 * 80)
+        self.assertEqual(c["reachable_payload_bytes_by_kind"]["shape_extra"], 30)
+        self.assertEqual(c["reachable_payload_bytes_by_kind"]["convex normals"], 32)
+        self.assertEqual(c["reachable_payload_bytes_by_kind"]["convex vertices"], 36)
+        self.assertEqual(c["reachable_payload_bytes_by_kind"]["MOPP bytecode"], 8)
+        self.assertEqual(c["reachable_payload_bytes_by_kind"]["MOPP vertices"], 48)
+        self.assertEqual(c["reachable_payload_bytes_by_kind"]["MOPP indices"], 12)
+        self.assertEqual(c["reachable_payload_raw_bytes"], 166)
+        self.assertEqual(c["reachable_payload_unique_bytes"], 166)
+
+    def test_orphan_collision_rows_not_assumed_loaded(self):
+        put(self.b, 228, 0)  # no ModelInfo -> ShapeInfo link
+        r = self.inspect()
+        c = r.collision_links
+        self.assertFalse(r.failures)
+        self.assertEqual(c["reachable_shape_records"], 0)
+        self.assertEqual(c["unreferenced_shape_records"], 2)
+        self.assertEqual(c["reachable_havok_children"], 0)
+        self.assertEqual(c["unreferenced_havok_children"], 3)
+        self.assertEqual(c["reachable_payload_unique_bytes"], 0)
+
+    def test_shared_child_is_not_double_counted(self):
+        put(self.b, 380 + 112, 600)  # shape 1 reuses child 0
+        r = self.inspect()
+        c = r.collision_links
+        self.assertFalse(r.failures)
+        self.assertEqual(c["shape_havok_refs"], 3)  # links remain 2 + 1
+        self.assertEqual(c["reachable_havok_children"], 2)
+        self.assertEqual(c["unreferenced_havok_children"], 1)
+        self.assertEqual(c["reachable_descriptor_bytes"], 2 * 124 + 2 * 80)
+
+    def test_overlapping_payload_spans_are_union_counted(self):
+        put(self.b, 600 + 52, 1400)  # convex vertices overlap 32 normal bytes
+        r = self.inspect()
+        c = r.collision_links
+        self.assertFalse(r.failures)
+        self.assertEqual(c["reachable_payload_raw_bytes"], 166)
+        self.assertEqual(c["reachable_payload_unique_bytes"], 134)
+
+    def test_invalid_payload_marks_footprint_incomplete(self):
+        put(self.b, 680 + 60, 4090)  # declared MOPP 8 bytes exceeds Block1
+        r = self.inspect()
+        self.assertTrue(r.failures)
+        self.assertFalse(r.collision_links["payload_footprint_valid"])
+
     def test_model_shape_alignment(self):
         put(self.b, 224, 257)
         self.assert_bad("invalid shape_offset/count")

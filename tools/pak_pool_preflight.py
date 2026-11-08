@@ -504,6 +504,7 @@ def main(argv: list[str] | None = None) -> int:
             "VB/IB payload offsets are relative to the MODEL BIN asset, never PAK Block2; provide matching --bin-* paths to prove spans.",
             "Native table envelopes do not validate internal Havok pointers, collision logic or renderer references.",
             "--collision-links checks unrelocated Block1 shape/MOPP spans, not Havok bytecode semantics or in-game collision.",
+            "Collision footprint counts ModelInfo-reachable ON-DISK Block1 bytes only; no Havok runtime heap limit or actual loaded shape count is inferred.",
             "--collision-preservation compares matched model CRCs with normalized Block1 data; unmatched donor keys are not automatically expected imports.",
             "Conservative paired sums are not a substitute for inspecting the actual merged PAK.",
             "A low runtime registry count does NOT prove success: factory may return before insertion.",
@@ -538,6 +539,9 @@ def main(argv: list[str] | None = None) -> int:
             if report.collision_links:
                 c = report.collision_links
                 print(f"  COLLISION LINKS: models={c['models_with_shapes']} ShapeInfo={c['shape_count']} HkShapeInfo={c['havok_child_count']} checked MOPP spans={c['mopp_spans']}")
+                print(f"  COLLISION FOOTPRINT: reachable ShapeInfo={c['reachable_shape_records']} / {c['shape_count']}; HkShapeInfo={c['reachable_havok_children']} / {c['havok_child_count']}")
+                print(f"  COLLISION BLOCK1 DISK BYTES: descriptors={c['reachable_descriptor_bytes']:,}; payload raw={c['reachable_payload_raw_bytes']:,}; unique={c['reachable_payload_unique_bytes']:,}; complete={c['payload_footprint_valid']}")
+                print(f"  MOPP reachable children={c['reachable_mopp_children']}; orphan shapes={c['unreferenced_shape_records']}; orphan children={c['unreferenced_havok_children']}")
             if report.native_tables:
                 print(f"  NATIVE INFO TABLE ENVELOPES: {len(report.native_tables)} inspected")
             for error in report.failures:
