@@ -19,6 +19,7 @@
 #pragma intrinsic(_ReturnAddress)
 
 #include "memorypatch.h"
+#include "animation_event_pool_4096.h"
 
 #pragma comment(lib, "dbghelp.lib")
 
@@ -238,7 +239,15 @@ static const DWORD POOL_ENTRY_SIZE = 0x30;   // 48 bytes per entry
 // EXACT stock capacity. Previous 4096 assumption made freelist checks
 // accept pointers 147,456 bytes past the real 1024 x 0x30 retail arena.
 // A separate 1024 x 0xF8 blend pool is located at 0x004554B1.
-static const DWORD POOL_MAX_ENTRIES = 0x400; // 1024 anim-event records, NOT expanded
+static const DWORD POOL_MAX_ENTRIES = 0x400; // native stock cap 1024
+static const DWORD POOL_AUDIT_MAX_ENTRIES=0x1000; // bitmap storage, NOT a cap claim
+static DWORD PoolAuditLimit() {
+    // Never accept "4096" merely because someone patched one CMP.
+    // The native extension sets ACTIVE only after the original game-owned
+    // 4096 allocation and production guard have both been verified.
+    return OC_AnimationEventPool4096_IsActive() ? POOL_AUDIT_MAX_ENTRIES : POOL_MAX_ENTRIES;
+}
+
 
 // Pool validation result flags
 enum PoolValidationResult {
@@ -261,13 +270,13 @@ static DWORD ValidateEventPool() {
         DWORD count = *(DWORD*)POOL_COUNT_PTR;
 
         // Check 1: Count within bounds
-        if (count > POOL_MAX_ENTRIES) {
+        if (count > PoolAuditLimit()) {
             result |= POOL_COUNT_OVERFLOW;
-            DangerLog("POOL VALIDATION: count=%d exceeds max=%d", count, POOL_MAX_ENTRIES);
+            DangerLog("POOL VALIDATION: count=%d exceeds max=%d", count, PoolAuditLimit());
         }
 
         // Calculate pool bounds
-        DWORD poolEnd = poolBase + POOL_MAX_ENTRIES * POOL_ENTRY_SIZE;
+        DWORD poolEnd = poolBase + PoolAuditLimit() * POOL_ENTRY_SIZE;
 
         // Check 2: FreeHead is NULL or within pool range
         if (freeHead != 0 && (freeHead < poolBase || freeHead >= poolEnd)) {
@@ -279,7 +288,7 @@ static DWORD ValidateEventPool() {
         // Check 3: Walk freelist for cycles/corruption (limited steps)
         if (freeHead != 0 && !(result & POOL_FREEHEAD_INVALID)) {
             DWORD visited = 0;
-            DWORD maxSteps = POOL_MAX_ENTRIES + 256;  // Safety limit
+            DWORD maxSteps = PoolAuditLimit() + 256;  // Safety limit
             DWORD* node = (DWORD*)freeHead;
 
             while (node && visited < maxSteps) {
@@ -383,11 +392,11 @@ static bool ValidateEventPoolFreelistDetailed() {
         DWORD poolBase = *(DWORD*)POOL_BASE_PTR;
         DWORD freeHead = *(DWORD*)POOL_FREELIST_PTR;
         DWORD count = *(DWORD*)POOL_COUNT_PTR;
-        DWORD poolEnd = poolBase + POOL_MAX_ENTRIES * POOL_ENTRY_SIZE;
+        DWORD poolEnd = poolBase + PoolAuditLimit() * POOL_ENTRY_SIZE;
 
         // Quick bounds check
-        if (count > POOL_MAX_ENTRIES) {
-            FreelistDiagLog("[CORRUPTION] Pool count overflow: %d > %d", count, POOL_MAX_ENTRIES);
+        if (count > PoolAuditLimit()) {
+            FreelistDiagLog("[CORRUPTION] Pool count overflow: %d > %d", count, PoolAuditLimit());
             return false;
         }
 
@@ -401,7 +410,7 @@ static bool ValidateEventPoolFreelistDetailed() {
         // Walk freelist with detailed diagnostics
         if (freeHead != 0) {
             DWORD visited = 0;
-            DWORD maxSteps = POOL_MAX_ENTRIES + 256;
+            DWORD maxSteps = PoolAuditLimit() + 256;
             DWORD* node = (DWORD*)freeHead;
             DWORD prevNode = 0;
 
@@ -1231,7 +1240,7 @@ static const char* IdentifyFunction(DWORD addr) {
 // ============================================================================
 
 // Bitmap to track allocated entries (1 = allocated, 0 = free)
-static BYTE g_PoolAllocationBitmap[POOL_MAX_ENTRIES / 8 + 1] = {0};
+static BYTE g_PoolAllocationBitmap[POOL_AUDIT_MAX_ENTRIES / 8 + 1] = {0};
 static volatile bool g_BitmapInitialized = false;
 
 // Initialize allocation bitmap
@@ -1243,7 +1252,7 @@ static void InitPoolAllocationBitmap() {
 
 // Set bit in allocation bitmap
 static void SetAllocBit(DWORD entryIndex) {
-    if (entryIndex >= POOL_MAX_ENTRIES) return;
+    if (entryIndex >= PoolAuditLimit()) return;
     DWORD byteIdx = entryIndex / 8;
     DWORD bitIdx = entryIndex % 8;
     g_PoolAllocationBitmap[byteIdx] |= (1 << bitIdx);
@@ -1251,7 +1260,7 @@ static void SetAllocBit(DWORD entryIndex) {
 
 // Clear bit in allocation bitmap
 static void ClearAllocBit(DWORD entryIndex) {
-    if (entryIndex >= POOL_MAX_ENTRIES) return;
+    if (entryIndex >= PoolAuditLimit()) return;
     DWORD byteIdx = entryIndex / 8;
     DWORD bitIdx = entryIndex % 8;
     g_PoolAllocationBitmap[byteIdx] &= ~(1 << bitIdx);
@@ -1259,7 +1268,7 @@ static void ClearAllocBit(DWORD entryIndex) {
 
 // Check if bit is set in allocation bitmap
 static bool IsAllocBitSet(DWORD entryIndex) {
-    if (entryIndex >= POOL_MAX_ENTRIES) return false;
+    if (entryIndex >= PoolAuditLimit()) return false;
     DWORD byteIdx = entryIndex / 8;
     DWORD bitIdx = entryIndex % 8;
     return (g_PoolAllocationBitmap[byteIdx] & (1 << bitIdx)) != 0;
@@ -1272,7 +1281,7 @@ static void LogPoolAllocation(DWORD entryAddr, bool isAlloc) {
         DWORD count = *(DWORD*)POOL_COUNT_PTR;
         DWORD freeHead = *(DWORD*)POOL_FREELIST_PTR;
 
-        if (entryAddr < poolBase || entryAddr >= poolBase + POOL_MAX_ENTRIES * POOL_ENTRY_SIZE) {
+        if (entryAddr < poolBase || entryAddr >= poolBase + PoolAuditLimit() * POOL_ENTRY_SIZE) {
             FreelistDiagLog("[AUDIT] Invalid entry address: 0x%08X (outside pool)", entryAddr);
             return;
         }

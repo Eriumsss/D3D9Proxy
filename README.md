@@ -209,3 +209,25 @@ blend next-free indices. **This is NOT a 4096-slot event-pool expansion**;
 native allocation, teardown and all producer/consumer bounds must
 be verified before writing a replacement allocator.
 See [ANIMATION_EVENT_POOL.md](ANIMATION_EVENT_POOL.md).
+
+### Experimental native animation EVENT pool expansion (4096)
+
+`ExpandAnimationEventPool4096=1` is a new **OFF by default**
+native x86 test feature, independent of the fixed-size animation
+**BLEND** array and of Havok. It calls the game's own
+`FUN_00404C2F` native pool constructor to create a new
+4096 × 0x30 record arena and uses the original atexit delete[] owner.
+Before publication it checks the entire original 1024-entry free-list,
+zero live records, no level/resource manager, exact `PostAnimEvent`
+instruction bytes and native constructor callsite. It changes ONLY
+the original event-producer guard immediate from 1024 to 4096,
+then verifies the published pool. The legacy Patch 6/29 combination
+remains disabled. The old 48 KiB arena is retained once per process
+to avoid freeing memory with unverified external users.
+
+Enable `EventPoolMonitor=1` to confirm `expanded_active=1` and
+`effective_capacity=4096` in the CSV. `ACTIVE` in
+`animation_event_pool_4096.log` means verified startup publication,
+**NOT retail gameplay validation**. Do not enable on the primary copy
+until enter/exit/reload, stress, and Alt+Enter tests pass.
+See [ANIMATION_EVENT_POOL_4096.md](ANIMATION_EVENT_POOL_4096.md).

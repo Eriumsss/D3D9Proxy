@@ -17,6 +17,7 @@
 #include "auxiliary_registry_8192.h"
 #include "device_reset_pool_4096.h"
 #include "dynamic_buffer_reset_pools_4096.h"
+#include "animation_event_pool_4096.h"
 #include "proxy_config.h"
 #include "geometry_budget_telemetry.h"
 
@@ -241,6 +242,7 @@ static BOOL CALLBACK ProxyApplyPatchesOnce(PINIT_ONCE, PVOID, PVOID*) {
     OC_AuxiliaryRegistry8192_Init(); // opt-in: +0xF4 ResourceOther and +0x114 PField native reserve+guard
     OC_DeviceResetPool4096_Init(); // opt-in: native D3D reset list 64 to 1024/4096, guarded append
     OC_DynamicBufferResetPools4096_Init(); // opt-in: both dynamic VB/IB reset lists 64 to 1024/4096
+    OC_AnimationEventPool4096_Init(); // opt-in: native 1024->4096 anim event pool BEFORE pool census
     OC_StaticPoolCensus_Init(); // opt-in, read-only; samples during level loading
     OC_GeometryBudget_Init(); // opt-in, read-only D3D managed VB/IB pressure and failures
     ApplyMemoryPatches();

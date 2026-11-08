@@ -27,6 +27,7 @@ set(PROXY_SOURCES
   src/auxiliary_registry_8192.cpp
   src/device_reset_pool_4096.cpp
   src/dynamic_buffer_reset_pools_4096.cpp
+  src/animation_event_pool_4096.cpp
   src/geometry_budget_telemetry.cpp
   src/retail_texture_vault.cpp
 )

@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "static_pool_census.h"
+#include "animation_event_pool_4096.h"
 
 #ifndef _M_IX86
 #error Retail static pool census requires the 32-bit game ABI
@@ -42,6 +43,7 @@ static const uintptr_t kEventPoolHeadCell=0x00CD996C;
 static const uintptr_t kEventPoolCountCell=0x00CD9974;
 static const uintptr_t kEventFactoryGuard=0x0088AA85;
 static const unsigned kEventStockCapacity=0x400;
+static const unsigned kEventExpandedCapacity=0x1000;
 static const unsigned kEventRecordStride=0x30;
 static const DWORD kEventLogMs=1000;
 // Reconstructed retail MgPhysics.cpp: [0x00CD7ED0] owns the 0x220-byte
@@ -657,7 +659,15 @@ static bool EventGuardIsStock() {
     }
 }
 
-// This sampler is evidence for a future real 4096-slot allocator rewrite,
+static bool EventGuardIsExtended() {
+    static const BYTE expected[]={
+        0x81,0x3D,0x74,0x99,0xCD,0x00,0x00,0x10,0x00,0x00
+    };
+    if (!CanRead(kEventFactoryGuard,sizeof(expected))) return false;
+    __try { return memcmp((const void*)kEventFactoryGuard,expected,sizeof(expected))==0; }
+    __except(EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+// This sampler monitors stock or OUR independently verified 4096 allocation.
 // NOT an expansion. A count of 1024 is an exhaustion signal, while a
 // non-null freeHead may mean recycled slots can still satisfy allocations.
 // Only one existing worker is used; zero game-memory writes.
@@ -671,8 +681,11 @@ static void PollEventPool() {
     DWORD allocBase=0,regionType=0;
     bool valid=false;
     const char* status="UNVERIFIED_RETAIL_GUARD";
-    const uintptr_t arenaBytes=(uintptr_t)kEventStockCapacity*kEventRecordStride;
-    if (EventGuardIsStock()) {
+    const bool extended=OC_AnimationEventPool4096_IsActive() && EventGuardIsExtended();
+    const bool stock=EventGuardIsStock() && !OC_AnimationEventPool4096_IsActive();
+    const unsigned cap=extended?kEventExpandedCapacity:kEventStockCapacity;
+    const uintptr_t arenaBytes=(uintptr_t)cap*kEventRecordStride;
+    if (stock || extended) {
         status="UNREADABLE_GLOBALS";
         if (ReadDword(kEventPoolBaseCell,base) &&
             ReadDword(kEventPoolHeadCell,head) &&
@@ -681,8 +694,8 @@ static void PollEventPool() {
             if (!base) {
                 valid=(!head && !count);
                 if (!valid) status="INVALID_UNINITIALIZED";
-            } else if (count>kEventStockCapacity) {
-                status="COUNT_EXCEEDS_STOCK";
+            } else if (count>cap) {
+                status="COUNT_EXCEEDS_CAP";
             } else if ((uintptr_t)base>UINTPTR_MAX-arenaBytes) {
                 status="BAD_ARENA_RANGE";
             } else {
@@ -704,10 +717,14 @@ static void PollEventPool() {
                             ReadDword(kEventPoolHeadCell,againHead) &&
                             ReadDword(kEventPoolCountCell,againCount) &&
                             base==againBase && head==againHead &&
-                            count==againCount && EventGuardIsStock()) {
+                            count==againCount &&
+                            (extended ? (OC_AnimationEventPool4096_IsActive() &&
+                                          EventGuardIsExtended()) :
+                                        (!OC_AnimationEventPool4096_IsActive() &&
+                                          EventGuardIsStock()))) {
                             valid=true;
-                            status=count==kEventStockCapacity ? "AT_STOCK_CAP" :
-                                   count>=kEventStockCapacity-16 ? "NEAR_STOCK_CAP" : "OK";
+                            status=count==cap ? (extended?"AT_EXPANDED_CAP":"AT_STOCK_CAP") :
+                                   count>=cap-16 ? (extended?"NEAR_EXPANDED_CAP":"NEAR_STOCK_CAP") : "OK";
                         }
                     }
                 }
@@ -724,12 +741,13 @@ static void PollEventPool() {
     if (fopen_s(&fp,g_eventOutput,"ab+")!=0 || !fp) return;
     if (fseek(fp,0,SEEK_END)==0 && ftell(fp)==0)
         fputs("time_ms,process_id,pool_base,free_head,used_count,stock_capacity,"
-              "peak_used_count,allocation_base,region_type,valid,status\n",fp);
-    fprintf(fp,"%lu,%lu,%08lX,%08lX,%lu,%u,%u,%08lX,%08lX,%u,%s\n",
+              "peak_used_count,allocation_base,region_type,valid,status,effective_capacity,expanded_active\n",fp);
+    fprintf(fp,"%lu,%lu,%08lX,%08lX,%lu,%u,%u,%08lX,%08lX,%u,%s,%u,%u\n",
             (unsigned long)now,(unsigned long)GetCurrentProcessId(),
             (unsigned long)base,(unsigned long)head,(unsigned long)count,
             kEventStockCapacity,g_eventPeak,(unsigned long)allocBase,
-            (unsigned long)regionType,(unsigned)valid,status);
+            (unsigned long)regionType,(unsigned)valid,status,cap,
+            (unsigned)extended);
     fclose(fp);
 }
 

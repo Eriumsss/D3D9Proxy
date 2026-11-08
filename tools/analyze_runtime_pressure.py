@@ -176,23 +176,34 @@ def summarize(directory: Path, threshold_mib: int = 128):
     if event_file.is_file():
         event={"valid_samples":0,"invalid_samples":0,
                "peak_used_count":0,"retail_capacity":1024,
-               "at_stock_cap_samples":0,"unverified_guard_samples":0,
+               "at_stock_cap_samples":0,"at_expanded_cap_samples":0,
+               "expanded_valid_samples":0,"unverified_guard_samples":0,
                "other_invalid_samples":0}
         for record in rows(event_file):
             try:
                 status=record.get("status","").strip()
                 valid=number(record,"valid")
-                cap=number(record,"stock_capacity")
+                stock=number(record,"stock_capacity")
+                cap=(number(record,"effective_capacity")
+                     if record.get("effective_capacity") not in (None,"")
+                     else stock)
+                expanded=(number(record,"expanded_active")
+                          if record.get("expanded_active") not in (None,"")
+                          else 0)
                 used=number(record,"used_count")
                 peak=number(record,"peak_used_count")
-                if valid!=1 or cap!=1024 or used>cap or peak>cap or peak<used:
+                if (valid!=1 or stock!=1024 or
+                    (expanded,cap) not in ((0,1024),(1,4096)) or
+                    used>cap or peak>cap or peak<used):
                     event["invalid_samples"]+=1
                     if status=="UNVERIFIED_RETAIL_GUARD":
                         event["unverified_guard_samples"]+=1
                     else:
                         event["other_invalid_samples"]+=1
                     continue
-                if status not in ("OK","NEAR_STOCK_CAP","AT_STOCK_CAP","NO_POOL"):
+                allowed=("OK","NEAR_STOCK_CAP","AT_STOCK_CAP","NO_POOL") if not expanded else (
+                         "OK","NEAR_EXPANDED_CAP","AT_EXPANDED_CAP")
+                if status not in allowed:
                     event["invalid_samples"]+=1
                     event["other_invalid_samples"]+=1
                     continue
@@ -200,7 +211,7 @@ def summarize(directory: Path, threshold_mib: int = 128):
                     event["invalid_samples"]+=1
                     event["other_invalid_samples"]+=1
                     continue
-                if status=="AT_STOCK_CAP" and used!=cap:
+                if status in ("AT_STOCK_CAP","AT_EXPANDED_CAP") and used!=cap:
                     event["invalid_samples"]+=1
                     event["other_invalid_samples"]+=1
                     continue
@@ -208,14 +219,22 @@ def summarize(directory: Path, threshold_mib: int = 128):
                 event["peak_used_count"]=max(event["peak_used_count"],peak)
                 if status=="AT_STOCK_CAP":
                     event["at_stock_cap_samples"]+=1
+                if status=="AT_EXPANDED_CAP":
+                    event["at_expanded_cap_samples"]+=1
+                if expanded:
+                    event["expanded_valid_samples"]+=1
             except (ValueError,TypeError):
                 event["invalid_samples"]+=1
                 event["other_invalid_samples"]+=1
         result["event_pool"]=event
+        if event["at_expanded_cap_samples"]:
+            notes.append("Native animation EVENT pool reached verified 4096 extended records; not the blend-slot pool")
         if event["at_stock_cap_samples"]:
             notes.append("Native animation EVENT pool reached 1024 records; free-list reuse and allocation failures still require runtime evidence")
         elif event["peak_used_count"]>=1008:
             notes.append("Native animation EVENT pool observed near 1024 stock records; NOT the separate 0xF8 blend-slot pool")
+        if event["expanded_valid_samples"]:
+            notes.append("Verified 4096-slot event arena was sampled; this does not prove enter/exit/reload stability")
         if event["unverified_guard_samples"]:
             notes.append("Native animation event guard did not match the stock retail opcode; capacity was NOT inferred")
     return result
@@ -241,7 +260,8 @@ def format_report(result):
     if result["event_pool"]:
         ep=result["event_pool"]
         lines.append(f"Animation EVENT pool: stock=1024, sampled peak={ep['peak_used_count']}; "
-                     f"at-cap samples={ep['at_stock_cap_samples']}, "
+                     f"stock-at-cap={ep['at_stock_cap_samples']}, expanded-at-cap={ep['at_expanded_cap_samples']}, "
+                     f"expanded-valid={ep['expanded_valid_samples']}, "
                      f"valid={ep['valid_samples']}, invalid={ep['invalid_samples']}")
     if result["blend_pool"]:
         p=result["blend_pool"]

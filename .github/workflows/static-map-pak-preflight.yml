@@ -14,6 +14,10 @@ on:
       - 'HAVOK_WORLD_LIFECYCLE.md'
       - 'tests/test_animation_blend_pool.py'
       - 'tests/test_animation_event_pool.py'
+      - 'tests/test_animation_event_pool_4096.py'
+      - 'ANIMATION_EVENT_POOL_4096.md'
+      - 'src/animation_event_pool_4096.cpp'
+      - 'src/animation_event_pool_4096.h'
       - 'ANIMATION_EVENT_POOL.md'
       - 'ANIMATION_BLEND_POOL.md'
       - 'tools/analyze_runtime_pressure.py'
@@ -93,6 +97,10 @@ on:
       - 'HAVOK_WORLD_LIFECYCLE.md'
       - 'tests/test_animation_blend_pool.py'
       - 'tests/test_animation_event_pool.py'
+      - 'tests/test_animation_event_pool_4096.py'
+      - 'ANIMATION_EVENT_POOL_4096.md'
+      - 'src/animation_event_pool_4096.cpp'
+      - 'src/animation_event_pool_4096.h'
       - 'ANIMATION_EVENT_POOL.md'
       - 'ANIMATION_BLEND_POOL.md'
       - 'tools/analyze_runtime_pressure.py'
@@ -165,7 +173,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Syntax check
-        run: python3 -m py_compile tests/test_animation_event_pool.py tools/native_model_preservation.py tests/test_static_model_preservation.py tools/analyze_havok_va_correlation.py tests/test_havok_va_correlation.py tools/analyze_havok_world.py tests/test_havok_world_lifecycle.py tools/analyze_runtime_pressure.py tests/test_virtual_address_pressure.py tools/pak_pool_preflight.py tests/test_pak_pool_preflight.py tests/test_static_geometry_preflight.py tests/test_native_table_preflight.py tests/test_model_bin_link_preflight.py tools/native_geometry_links.py tools/native_collision_links.py tests/test_native_collision_links.py tools/native_collision_provenance.py tests/test_collision_provenance.py
+        run: python3 -m py_compile tests/test_animation_event_pool_4096.py tests/test_animation_event_pool.py tools/native_model_preservation.py tests/test_static_model_preservation.py tools/analyze_havok_va_correlation.py tests/test_havok_va_correlation.py tools/analyze_havok_world.py tests/test_havok_world_lifecycle.py tools/analyze_runtime_pressure.py tests/test_virtual_address_pressure.py tools/pak_pool_preflight.py tests/test_pak_pool_preflight.py tests/test_static_geometry_preflight.py tests/test_native_table_preflight.py tests/test_model_bin_link_preflight.py tools/native_geometry_links.py tools/native_collision_links.py tests/test_native_collision_links.py tools/native_collision_provenance.py tests/test_collision_provenance.py
       - name: Synthetic PC PAK and pool-cap regression tests
         run: python3 -m unittest discover -s tests -p test_pak_pool_preflight.py -v
       - name: Synthetic PC PAK Block2 static geometry buffer validation
@@ -194,6 +202,8 @@ jobs:
         run: python3 -m unittest discover -s tests -p test_animation_blend_pool.py -v
       - name: Separate native animation EVENT pool stock bounds and safety contracts
         run: python3 -m unittest discover -s tests -p test_animation_event_pool.py -v
+      - name: Native original-allocator animation event pool 4096 source and telemetry contracts
+        run: python3 -m unittest discover -s tests -p test_animation_event_pool_4096.py -v
       - name: 32-bit VA pressure and offline diagnostics regression
         run: python3 -m unittest discover -s tests -p test_virtual_address_pressure.py -v
       - name: GZF model registry x86 opcode and transactional patch contract
@@ -250,6 +260,8 @@ jobs:
           if errorlevel 1 exit /b 1
           cl /nologo /W3 /EHsc /c /Fo:dynamic_buffer_reset_pools_4096.obj src\dynamic_buffer_reset_pools_4096.cpp
           if errorlevel 1 exit /b 1
+          cl /nologo /W3 /EHsc /c /Fo:animation_event_pool_4096.obj src\animation_event_pool_4096.cpp
+          if errorlevel 1 exit /b 1
           cl /nologo /W3 /EHsc /c /Fo:geometry_budget_telemetry.obj src\geometry_budget_telemetry.cpp
           if errorlevel 1 exit /b 1
           cl /nologo /W3 /EHsc /c /Fo:proxy_config.obj src\proxy_config.cpp
@@ -265,9 +277,9 @@ jobs:
           call "%VSROOT%\VC\Auxiliary\Build\vcvarsall.bat" x86
           if errorlevel 1 exit /b 1
           cd /d src
-          cl /nologo /c /EHsc /W0 /MD /O2 /Zi /D WIN32 /D NDEBUG /D WIN32_LEAN_AND_MEAN /D NOMINMAX /D _WINDLL d3d9device.cpp d3d9proxy.cpp overlay.cpp memorypatch.cpp filehook.cpp vespucci_bridge.cpp stronghold_log.cpp crowd_event_handler.cpp retail_fn_trace.cpp retail_heap_extender.cpp proxy_config.cpp static_pool_census.cpp model_registry_2048.cpp texture_registry_4096.cpp effect_registry_1024.cpp gfx_registry_512.cpp animation_binding_cache_512.cpp auxiliary_registry_8192.cpp device_reset_pool_4096.cpp dynamic_buffer_reset_pools_4096.cpp geometry_budget_telemetry.cpp retail_texture_vault.cpp
+          cl /nologo /c /EHsc /W0 /MD /O2 /Zi /D WIN32 /D NDEBUG /D WIN32_LEAN_AND_MEAN /D NOMINMAX /D _WINDLL d3d9device.cpp d3d9proxy.cpp overlay.cpp memorypatch.cpp filehook.cpp vespucci_bridge.cpp stronghold_log.cpp crowd_event_handler.cpp retail_fn_trace.cpp retail_heap_extender.cpp proxy_config.cpp static_pool_census.cpp model_registry_2048.cpp texture_registry_4096.cpp effect_registry_1024.cpp gfx_registry_512.cpp animation_binding_cache_512.cpp auxiliary_registry_8192.cpp device_reset_pool_4096.cpp dynamic_buffer_reset_pools_4096.cpp animation_event_pool_4096.cpp geometry_budget_telemetry.cpp retail_texture_vault.cpp
           if errorlevel 1 exit /b 1
-          link /DLL /OUT:d3d9.dll /DEF:d3d9proxy.def /NOLOGO /DEBUG:FULL /INCREMENTAL:NO /OPT:REF /OPT:ICF /MAP:d3d9.map /PDB:d3d9.pdb d3d9device.obj d3d9proxy.obj overlay.obj memorypatch.obj filehook.obj vespucci_bridge.obj stronghold_log.obj crowd_event_handler.obj retail_fn_trace.obj retail_heap_extender.obj proxy_config.obj static_pool_census.obj model_registry_2048.obj texture_registry_4096.obj effect_registry_1024.obj gfx_registry_512.obj animation_binding_cache_512.obj auxiliary_registry_8192.obj device_reset_pool_4096.obj dynamic_buffer_reset_pools_4096.obj geometry_budget_telemetry.obj retail_texture_vault.obj d3d9.lib dxguid.lib uuid.lib user32.lib kernel32.lib
+          link /DLL /OUT:d3d9.dll /DEF:d3d9proxy.def /NOLOGO /DEBUG:FULL /INCREMENTAL:NO /OPT:REF /OPT:ICF /MAP:d3d9.map /PDB:d3d9.pdb d3d9device.obj d3d9proxy.obj overlay.obj memorypatch.obj filehook.obj vespucci_bridge.obj stronghold_log.obj crowd_event_handler.obj retail_fn_trace.obj retail_heap_extender.obj proxy_config.obj static_pool_census.obj model_registry_2048.obj texture_registry_4096.obj effect_registry_1024.obj gfx_registry_512.obj animation_binding_cache_512.obj auxiliary_registry_8192.obj device_reset_pool_4096.obj dynamic_buffer_reset_pools_4096.obj animation_event_pool_4096.obj geometry_budget_telemetry.obj retail_texture_vault.obj d3d9.lib dxguid.lib uuid.lib user32.lib kernel32.lib
           if errorlevel 1 exit /b 1
           if not exist d3d9.map exit /b 1
           if not exist d3d9.pdb exit /b 1
