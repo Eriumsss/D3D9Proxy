@@ -91,6 +91,7 @@ def summarize(directory: Path, threshold_mib: int = 128):
         "registry_peaks":{},
         "reset_list_peaks":{},
         "binding_peaks":{},
+        "blend_pool":{},
         "notes":notes,
     }
 
@@ -142,6 +143,34 @@ def summarize(directory: Path, threshold_mib: int = 128):
                         )
             except (ValueError,TypeError):
                 continue
+    blend_file=directory / "animation_blend_pool.csv"
+    if blend_file.is_file():
+        blend={"valid_samples":0,"invalid_samples":0,
+               "peak_next_free_index":0,"retail_capacity":1024,
+               "at_capacity_samples":0}
+        for row in rows(blend_file):
+            try:
+                valid_sample=number(row,"valid")
+                cap=number(row,"retail_capacity")
+                index=number(row,"next_free_index")
+                peak=number(row,"peak_next_free_index")
+                if (valid_sample!=1 or cap!=1024 or index>cap
+                        or peak>cap or peak<index):
+                    blend["invalid_samples"]+=1
+                    continue
+                blend["valid_samples"]+=1
+                blend["peak_next_free_index"]=max(blend["peak_next_free_index"],peak)
+                if index==cap:
+                    blend["at_capacity_samples"]+=1
+            except (ValueError,TypeError):
+                blend["invalid_samples"]+=1
+        result["blend_pool"]=blend
+        if blend["at_capacity_samples"]:
+            notes.append("Fixed animation blend allocator reached its stock 1024-slot boundary in sampled data")
+        elif blend["peak_next_free_index"]>=1008:
+            notes.append("Fixed animation blend next-free index sampled near 1024 (NOT a live-object count)")
+        if blend["invalid_samples"]:
+            notes.append("Some blend samples were invalid or used an unverified retail guard")
     return result
 
 def format_report(result):
@@ -162,6 +191,9 @@ def format_report(result):
         lines.append(f"Reset list {name}: sampled peak={count} (actual allocated cap unknown)")
     for name, count in sorted(result["binding_peaks"].items()):
         lines.append(f"Animation {name}: sampled peak={count}")
+    if result["blend_pool"]:
+        p=result["blend_pool"]
+        lines.append(f"Fixed animation blend: sampled next-free peak={p['peak_next_free_index']} / stock cap={p['retail_capacity']}; valid={p['valid_samples']}; invalid={p['invalid_samples']}")
     for note in result["notes"]:
         lines.append("NOTE: "+note)
     lines.append("Counts are samples, not proof of patch activation, valid imported assets or in-game stability.")
