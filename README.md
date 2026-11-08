@@ -118,3 +118,7 @@ With [StaticMapPools] Monitor=1, the existing census worker writes runtime_pool_
 ### Diagnosing Alt+Enter / Direct3D9 Reset faults
 
 The CI-built x86 release artifact now includes the **matching** `d3d9.dll`, `d3d9.pdb` and `d3d9.map`. To identify a crash from the DLL's module-relative EIP instead of guessing which reset callback failed, run `python tools/symbolize_proxy_crash.py --map d3d9.map --rva 0xB1B9` using the MAP from the **same** DLL build. The nearest PUBLIC alone is not proof of the precise source instruction; see [CRASH_SYMBOLIZATION.md](CRASH_SYMBOLIZATION.md) for WinDbg PDB steps and a controlled Alt+Enter A/B test. A full match played successfully with expansion options enabled is encouraging, but frequent Alt+Enter causing `0xC0000005` remains a distinct reset-path problem.
+
+### x86 virtual-address pressure and offline triage
+
+With `[StaticMapPools] Monitor=1`, the existing static census worker now writes `virtual_address_pressure.csv` even before a level exists. A read-only `VirtualQuery` scan approximately every two seconds reports process free/reserved/committed VA and the largest contiguous free region. Inspect it alongside registry/reset list CSVs with `python tools/analyze_runtime_pressure.py --game-dir "C:\Games\LOTR Conquest"` or add `--json` for a structured report. The default 128 MiB warning threshold is adjustable, NOT a verified engine limit. See [VIRTUAL_ADDRESS_PRESSURE.md](VIRTUAL_ADDRESS_PRESSURE.md).
