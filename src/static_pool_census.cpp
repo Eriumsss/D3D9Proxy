@@ -514,6 +514,9 @@ static void PollPhysicsWorld() {
         if (!manager) {
             valid=true;
             status="NO_MANAGER";
+        } else if ((uintptr_t)manager > UINTPTR_MAX -
+                   (kPhysicsLoadingFlagOffset+sizeof(BYTE))) {
+            status="BAD_MANAGER_RANGE";
         } else {
             status="BAD_MANAGER_VTABLE";
             if (ReadDword((uintptr_t)manager,vtable) &&
@@ -563,11 +566,12 @@ static void PollPhysicsWorld() {
     FILE* f=NULL;
     if (fopen_s(&f,g_physicsOutput,"ab+")!=0 || !f) return;
     if (fseek(f,0,SEEK_END)==0 && ftell(f)==0)
-        fputs("time_ms,level_object,level_valid,manager_ptr,manager_vtable,"
+        fputs("time_ms,process_id,level_object,level_valid,manager_ptr,manager_vtable,"
               "thread_memory_ptr,world_ptr,loading_flag,valid,status,transition,"
               "observed_attaches,observed_detaches,observed_replacements\n",f);
-    fprintf(f,"%lu,%08lX,%u,%08lX,%08lX,%08lX,%08lX,%u,%u,%s,%s,%u,%u,%u\n",
-            (unsigned long)now,(unsigned long)level,levelValid,
+    fprintf(f,"%lu,%lu,%08lX,%u,%08lX,%08lX,%08lX,%08lX,%u,%u,%s,%s,%u,%u,%u\n",
+            (unsigned long)now,(unsigned long)GetCurrentProcessId(),
+            (unsigned long)level,levelValid,
             (unsigned long)manager,(unsigned long)vtable,
             (unsigned long)threadMemory,(unsigned long)world,
             (unsigned)loading,(unsigned)valid,status,transition,
