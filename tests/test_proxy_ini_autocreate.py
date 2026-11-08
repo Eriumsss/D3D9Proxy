@@ -81,8 +81,7 @@ class ProxyIniAutocreate(unittest.TestCase):
         self.assertIn("(existing&FILE_ATTRIBUTE_DIRECTORY)==0",CPP)
         self.assertNotIn("WritePrivateProfileStringA(",CPP)
         self.assertNotIn("CREATE_ALWAYS",CPP)
-        self.assertNotIn("MOVEFILE_REPLACE_EXISTING",CPP.replace(
-            "// No MOVEFILE_REPLACE_EXISTING", "// intentionally no replace"))
+        self.assertNotIn("MOVEFILE_REPLACE_EXISTING",CPP[CPP.index("if (!MoveFileExA(temp,finalPath"):])
 
     def test_atomic_same_folder_creation_and_rename(self):
         self.assertIn('GetTempFileNameA(folder,"d9p",0,temp)',CPP)
