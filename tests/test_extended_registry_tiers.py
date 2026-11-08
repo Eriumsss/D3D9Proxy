@@ -57,13 +57,14 @@ class HigherRegistryTiers(unittest.TestCase):
                 self.assertIn("kOldCap=0x%X"%old,source)
                 self.assertIn("kNewCap=0x%X"%lower,source)
                 self.assertIn("kHigherCap=0x%X"%higher,source)
+                self.assertIn("kUltraCap=",source)
                 for expr in sites:
                     self.assertIn(expr,source)
                 self.assertIn("requestedCap!=kNewCap && requestedCap!=kHigherCap",source)
-                self.assertIn(func+"(high?kHigherCap:kNewCap)",source)
+                self.assertIn(func+"(ultra?kUltraCap:(high?kHigherCap:kNewCap))",source)
                 self.assertIn('GetPrivateProfileIntA("StaticMapPools","'+low_cfg+'",0,ini)',source)
                 self.assertIn('GetPrivateProfileIntA("StaticMapPools","'+high_cfg+'",0,ini)',source)
-                self.assertIn("if (!high && !low) return;",source)
+                self.assertIn("if (!ultra && !high && !low) return;",source)
 
     def test_all_registry_caps_fit_signed_smallvec_header(self):
         for name,path,old,low,high,*_ in TIERS:
@@ -118,6 +119,48 @@ class HigherRegistryTiers(unittest.TestCase):
           "--assume-model2048","--assume-model4096",
           "--assume-texture4096","--assume-texture8192",
           "--assume-effects1024","--assume-effects2048","--json"]),0)
+
+
+    def test_ultra_tiers_raise_true_native_reserves_and_factory_guard(self):
+        cases=[
+            ("model","src/model_registry_2048.cpp",8192,"ExpandModels8192",
+             "WriteNewCap(kModelCtorImm,requestedCap)","WriteNewCap(kFactoryCmpImm,requestedCap)"),
+            ("texture","src/texture_registry_4096.cpp",16384,"ExpandTextures16384",
+             "WriteImmediate(kCtorImm,requestedCap)","WriteImmediate(kFactoryImm,requestedCap)"),
+            ("effect","src/effect_registry_1024.cpp",4096,"ExpandEffects4096",
+             "StoreImmediate(kReserveImmediate,requestedCap)","StoreImmediate(kFactoryImmediate,requestedCap)")
+        ]
+        for kind,path,cap,key,ctor,factory in cases:
+            with self.subTest(registry=kind):
+                source=(ROOT/path).read_text("utf-8")
+                self.assertIn("kUltraCap=0x%X"%cap,source)
+                self.assertIn('"'+key+'",0,ini',source)
+                self.assertIn("requestedCap!=kUltraCap",source)
+                self.assertIn(ctor,source)
+                self.assertIn(factory,source)
+                self.assertLessEqual(cap,32767)
+
+    def test_ultra_counts_need_ultra_caps(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pak=synthetic_pak(Path(tmp)/"ultra.pak",{"models":6500,"textures":14000,"effects":3800})
+            previous=pre.inspect_pak(pak,assume_caps={"models":4096,"textures":8192,"effects":2048})
+            self.assertEqual(len(previous.failures),3)
+            expanded=pre.inspect_pak(pak,assume_caps={"models":8192,"textures":16384,"effects":4096})
+            self.assertEqual(expanded.failures,[])
+
+    def test_ultra_cli_flags_and_lower_tier_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pak=synthetic_pak(Path(tmp)/"ultra.pak",{"models":6500,"textures":14000,"effects":3800})
+            self.assertEqual(pre.main(["--base",str(pak),
+                 "--assume-model4096","--assume-model8192",
+                 "--assume-texture8192","--assume-texture16384",
+                 "--assume-effects2048","--assume-effects4096","--json"]),0)
+
+    def test_gfx_pfield_ultra_flags_and_no_resourceother_pak_mapping(self):
+        source=(ROOT/"tools/pak_pool_preflight.py").read_text("utf-8")
+        self.assertIn("--assume-gfx1024",source)
+        self.assertIn("--assume-pfields16384",source)
+        self.assertNotIn("--assume-resourceother16384",source)
 
     def test_new_tier_no_gfx_pfield_patch_claim(self):
         doc=(ROOT/"REGISTRY_CAPACITY_TIERS.md").read_text("utf-8")

@@ -44,12 +44,12 @@ class ProxyIniAutocreate(unittest.TestCase):
 
     def test_every_current_registry_and_device_reset_tier_is_present(self):
         keys=[
-            "ExpandModels2048","ExpandModels4096",
-            "ExpandTextures4096","ExpandTextures8192",
-            "ExpandEffects1024","ExpandEffects2048",
-            "ExpandGfx256","ExpandGfx512",
-            "ExpandResourceOther4096","ExpandResourceOther8192",
-            "ExpandPFields8192",
+            "ExpandModels2048","ExpandModels4096","ExpandModels8192",
+            "ExpandTextures4096","ExpandTextures8192","ExpandTextures16384",
+            "ExpandEffects1024","ExpandEffects2048","ExpandEffects4096",
+            "ExpandGfx256","ExpandGfx512","ExpandGfx1024",
+            "ExpandResourceOther4096","ExpandResourceOther8192","ExpandResourceOther16384",
+            "ExpandPFields8192","ExpandPFields16384",
             "ExpandDeviceResetResources1024","ExpandDeviceResetResources4096",
             "ExpandDynamicBufferReset1024","ExpandDynamicBufferReset4096"
         ]
