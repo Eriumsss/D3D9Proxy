@@ -110,3 +110,7 @@ Two independent 64-pointer arrays ([0x00A41520] for dynamic VB, [0x00A4152C] for
 ### Native two-level animation binding cache limit
 
 The retail animation cache contains two independent 64-entry SmallVec8 pair arrays: outer clip-CRC registration and inner skeleton-CRC binding maps. An opt-in x86 patch, `ExpandAnimationBindingCache256=1` or `ExpandAnimationBindingCache512=1`, expands both using the original native `FUN_00EA3A30` reserve implementation, preserving the registry's original `FUN_0089F25C` initialization and existing append/search/sort/unload logic. The separate GFX pool also calls the old `FUN_0040B4CB` allocator, so **only the animation callsite is redirected**; the shared allocator remains unchanged. The animation patch initializes **after the GFX patch preflight**. See [ANIMATION_BINDING_CACHE_512.md](ANIMATION_BINDING_CACHE_512.md). This is not a Havok allocator, not the 1024-slot animation blend pool, and is unverified in actual gameplay.
+
+### Read-only native runtime pool pressure
+
+With [StaticMapPools] Monitor=1, the existing census worker writes runtime_pool_pressure.csv beside static_map_pools.csv. It samples the three native device-reset registration lists, animation clip/skeleton binding counts, per-level high-water marks and validity flags. This does not prove an Expand* patch actually activated. See [RUNTIME_POOL_PRESSURE.md](RUNTIME_POOL_PRESSURE.md) for layouts, fields and limitations.
