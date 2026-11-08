@@ -64,6 +64,7 @@ class ProxyIniAutocreate(unittest.TestCase):
         pool=self.config["StaticMapPools"]
         self.assertEqual(pool.getint("Monitor"),1)
         self.assertEqual(pool.getint("GeometryBudget"),1)
+        self.assertEqual(pool.getint("BlendMonitor"),0)
         self.assertEqual(self.config["RetailHeapExtender"].getint("Enabled"),0)
         self.assertEqual(self.config["WorldResourceMemory"].getint("TextureVault"),0)
         self.assertEqual(self.config["WorldResourceMemory"].getint("Monitor"),0)
