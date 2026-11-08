@@ -42,6 +42,7 @@ ExpandDeviceResetResources4096=0
 ExpandDynamicBufferReset1024=0
 ExpandDynamicBufferReset4096=0
 GeometryBudget=1
+BlendMonitor=0
 ```
 
 Other included modules: read-only pool census, static buffer budget telemetry, optional texture memory vault, native PAK/BIN preflight tools, and retail tracing components. The existing diagnostics and auxiliary modules have been retained from the working OpenConquest proxy rather than discarded during the split.
@@ -122,3 +123,23 @@ The CI-built x86 release artifact now includes the **matching** `d3d9.dll`, `d3d
 ### x86 virtual-address pressure and offline triage
 
 With `[StaticMapPools] Monitor=1`, the existing static census worker now writes `virtual_address_pressure.csv` even before a level exists. A read-only `VirtualQuery` scan approximately every two seconds reports process free/reserved/committed VA and the largest contiguous free region. Inspect it alongside registry/reset list CSVs with `python tools/analyze_runtime_pressure.py --game-dir "C:\Games\LOTR Conquest"` or add `--json` for a structured report. The default 128 MiB warning threshold is adjustable, NOT a verified engine limit. See [VIRTUAL_ADDRESS_PRESSURE.md](VIRTUAL_ADDRESS_PRESSURE.md).
+
+### Fixed 1024-slot animation blend pool (read-only monitor)
+
+The retail animation **blend slot array** is separate from the 512-entry
+animation clip/skeleton binding caches and the event pool. Its native allocator
+uses 1024 consecutive 0xF8-byte records; the next-free counter is immediately
+after the last record. Merely increasing its compare immediate would corrupt
+the engine's adjacent data. The stock capacity is **not expanded**.
+
+On a disposable test game, use `[StaticMapPools] BlendMonitor=1` in
+`proxy.ini` (auto-generated default is `0`). The existing pinned
+diagnostic worker writes `animation_blend_pool.csv` every second,
+including before a level exists, with guarded counter/guard validity,
+a per-arena sampled peak and explicit `NEAR_CAP`/`AT_CAP` statuses.
+No new worker, EXE patch, PAK write or Havok change is introduced. The
+optional offline VA analyzer will summarize valid blend records if present.
+This is **not** a live animation object count or runtime proof.
+
+See [ANIMATION_BLEND_POOL.md](ANIMATION_BLEND_POOL.md) for the mapped native
+layout, validation limitations, and the Helm's Deep + Isengard test plan.
