@@ -32,6 +32,7 @@ static const char kDefaultIni[] =
     "GeometryBudget=1\r\n"
     "BlendMonitor=0\r\n"
     "EventPoolMonitor=0\r\n"
+    "ExpandAnimationEventPool4096=0\r\n"
     "PhysicsWorldMonitor=0\r\n"
     "PhysicsVaCorrelation=0\r\n"
     "\r\n"
