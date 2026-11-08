@@ -55,6 +55,9 @@ on:
       - 'REGISTRY_CAPACITY_TIERS.md'
       - 'tests/test_model_registry_2048.py'
       - 'src/d3d9proxy.cpp'
+      - 'tools/symbolize_proxy_crash.py'
+      - 'tests/test_proxy_crash_symbols.py'
+      - 'CRASH_SYMBOLIZATION.md'
       - 'src/proxy_config.cpp'
       - 'src/proxy_config.h'
       - 'tests/test_proxy_ini_autocreate.py'
@@ -115,6 +118,9 @@ on:
       - 'REGISTRY_CAPACITY_TIERS.md'
       - 'tests/test_model_registry_2048.py'
       - 'src/d3d9proxy.cpp'
+      - 'tools/symbolize_proxy_crash.py'
+      - 'tests/test_proxy_crash_symbols.py'
+      - 'CRASH_SYMBOLIZATION.md'
       - 'src/proxy_config.cpp'
       - 'src/proxy_config.h'
       - 'tests/test_proxy_ini_autocreate.py'
@@ -166,6 +172,8 @@ jobs:
         run: python3 -m unittest discover -s tests -p test_dynamic_buffer_reset_pools_4096.py -v
       - name: Native proxy.ini first-run creation and existing settings preservation
         run: python3 -m unittest discover -s tests -p test_proxy_ini_autocreate.py -v
+      - name: MSVC x86 fault-address and PDB/MAP symbolization contracts
+        run: python3 -m unittest discover -s tests -p test_proxy_crash_symbols.py -v
   retail-x86-module-compile:
     runs-on: windows-latest
     timeout-minutes: 10

@@ -114,3 +114,7 @@ The retail animation cache contains two independent 64-entry SmallVec8 pair arra
 ### Read-only native runtime pool pressure
 
 With [StaticMapPools] Monitor=1, the existing census worker writes runtime_pool_pressure.csv beside static_map_pools.csv. It samples the three native device-reset registration lists, animation clip/skeleton binding counts, per-level high-water marks and validity flags. This does not prove an Expand* patch actually activated. See [RUNTIME_POOL_PRESSURE.md](RUNTIME_POOL_PRESSURE.md) for layouts, fields and limitations.
+
+### Diagnosing Alt+Enter / Direct3D9 Reset faults
+
+The CI-built x86 release artifact now includes the **matching** `d3d9.dll`, `d3d9.pdb` and `d3d9.map`. To identify a crash from the DLL's module-relative EIP instead of guessing which reset callback failed, run `python tools/symbolize_proxy_crash.py --map d3d9.map --rva 0xB1B9` using the MAP from the **same** DLL build. The nearest PUBLIC alone is not proof of the precise source instruction; see [CRASH_SYMBOLIZATION.md](CRASH_SYMBOLIZATION.md) for WinDbg PDB steps and a controlled Alt+Enter A/B test. A full match played successfully with expansion options enabled is encouraging, but frequent Alt+Enter causing `0xC0000005` remains a distinct reset-path problem.
