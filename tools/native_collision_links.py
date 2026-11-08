@@ -33,6 +33,17 @@ def _in_table(offset: int, count: int, base: int, available: int, stride: int) -
             count <= available - (offset - base) // stride)
 
 
+def _unique_bytes(spans: list[tuple[int, int]]) -> int:
+    """Count the union of validated Block1 [start,end) byte ranges."""
+    last = total = 0
+    for start, end in sorted(spans):
+        if end <= last:
+            continue
+        total += end - max(start, last)
+        last = end
+    return total
+
+
 def inspect_collision_links(h: tuple[int, ...], block1: bytes,
                             failures: list[str], warnings: list[str]) -> dict[str, object]:
     """Validate disk collision parent/child links and data envelopes."""
@@ -46,7 +57,14 @@ def inspect_collision_links(h: tuple[int, ...], block1: bytes,
         "shape_havok_refs": 0, "extra_spans": 0,
         "convex_spans": 0, "mopp_spans": 0,
         "unknown_rigid_kinds": 0, "unknown_havok_kinds": 0,
-        "scope": "Block1 on-disk bounds only; no MOPP bytecode or runtime test",
+        "reachable_shape_records": 0, "unreferenced_shape_records": 0,
+        "reachable_havok_children": 0, "unreferenced_havok_children": 0,
+        "reachable_mopp_children": 0, "reachable_convex_children": 0,
+        "reachable_descriptor_bytes": 0,
+        "reachable_payload_raw_bytes": 0, "reachable_payload_unique_bytes": 0,
+        "reachable_payload_bytes_by_kind": {},
+        "payload_footprint_valid": False,
+        "scope": "Referenced unique on-disk Block1 records/byte spans only; no Havok runtime heap allocation estimate",
     }
     if mc and not _in_bytes(mb, mc * MODEL_STRIDE, total):
         failures.append("collision: ModelInfo table outside Block1")
@@ -64,6 +82,14 @@ def inspect_collision_links(h: tuple[int, ...], block1: bytes,
         failures.append("collision: HkShapeInfo table outside Block1")
         return report
 
+    # Count only the collision data reachable through ModelInfo -> ShapeInfo
+    # -> HkShapeInfo. Unreferenced table rows must not be treated as live assets.
+    reachable_shapes: set[int] = set()
+    shape_children: dict[int, range] = {}
+    extras: dict[int, tuple[int, int]] = {}
+    payloads: dict[int, list[tuple[str, int, int]]] = {}
+    child_kinds: dict[int, int] = {}
+
     for mi in range(mc):
         at = mb + MODEL_STRIDE * mi
         off, count = struct.unpack_from("<2I", block1, at + 224)
@@ -75,6 +101,8 @@ def inspect_collision_links(h: tuple[int, ...], block1: bytes,
                             f"invalid shape_offset/count ({off}, {count})")
         else:
             report["model_shape_refs"] += count
+            first = (off - sb) // SHAPE_STRIDE
+            reachable_shapes.update(range(first, first + count))
 
     for si in range(sc):
         at = sb + si * SHAPE_STRIDE
@@ -90,6 +118,8 @@ def inspect_collision_links(h: tuple[int, ...], block1: bytes,
                                 f"({child_off}, {child_count})")
             else:
                 report["shape_havok_refs"] += child_count
+                first = (child_off - kb) // HK_STRIDE
+                shape_children[si] = range(first, first + child_count)
         # Kind-0 ShapeInfo 'extra' is a separate Block1 blob, not child geometry.
         # PakRebuilder reads [4 x u32 header][num x u32][last_value + 2 bytes].
         if kind == 0 and extra:
@@ -108,10 +138,12 @@ def inspect_collision_links(h: tuple[int, ...], block1: bytes,
                 failures.append(f"ShapeInfo[{si}]: extra payload outside Block1")
             else:
                 report["extra_spans"] += 1
+                extras[si] = (extra, 16 + n * 4 + last + 2)
 
     for ki in range(kc):
         at = kb + ki * HK_STRIDE
         kind = _u32(block1, at + 32)
+        child_kinds[ki] = kind
         if kind > 6:
             report["unknown_havok_kinds"] += 1
             if report["unknown_havok_kinds"] <= 5:
@@ -125,10 +157,12 @@ def inspect_collision_links(h: tuple[int, ...], block1: bytes,
                 failures.append(
                     f"HkShapeInfo[{ki}] kind {kind}: {label} payload outside Block1 "
                     f"(off={offset}, count={count}, stride={unit})")
-            elif kind == 5:
-                report["convex_spans"] += 1
-            elif kind == 6:
-                report["mopp_spans"] += 1
+            else:
+                payloads.setdefault(ki, []).append((label, offset, count * unit))
+                if kind == 5:
+                    report["convex_spans"] += 1
+                elif kind == 6:
+                    report["mopp_spans"] += 1
 
         if kind == 5:
             normal_n, normal_off, vert_n, vert_off = struct.unpack_from(
@@ -142,6 +176,45 @@ def inspect_collision_links(h: tuple[int, ...], block1: bytes,
             validate("MOPP bytecode", tree_n, tree_off, 1)
             validate("MOPP vertices", vert_n, vert_off, 12)
             validate("MOPP indices", tri_n, tri_off, 6)  # 3 x u16 per triangle
+    reachable_children: set[int] = set()
+    for shape in reachable_shapes:
+        reachable_children.update(shape_children.get(shape, ()))
+    report["reachable_shape_records"] = len(reachable_shapes)
+    report["unreferenced_shape_records"] = sc - len(reachable_shapes)
+    report["reachable_havok_children"] = len(reachable_children)
+    report["unreferenced_havok_children"] = kc - len(reachable_children)
+    report["reachable_mopp_children"] = sum(child_kinds.get(i) == 6 for i in reachable_children)
+    report["reachable_convex_children"] = sum(child_kinds.get(i) == 5 for i in reachable_children)
+    # These are disk descriptor bytes, NOT Havok heap allocations.
+    report["reachable_descriptor_bytes"] = (
+        len(reachable_shapes) * SHAPE_STRIDE + len(reachable_children) * HK_STRIDE
+    )
+    by_kind = {
+        "shape_extra": 0,
+        "convex normals": 0, "convex vertices": 0,
+        "MOPP bytecode": 0, "MOPP vertices": 0, "MOPP indices": 0,
+    }
+    spans: list[tuple[int, int]] = []
+    for si in reachable_shapes:
+        if si in extras:
+            start, length = extras[si]
+            by_kind["shape_extra"] += length
+            spans.append((start, start + length))
+    for ki in reachable_children:
+        for label, start, length in payloads.get(ki, ()):
+            by_kind[label] += length
+            spans.append((start, start + length))
+    report["reachable_payload_bytes_by_kind"] = by_kind
+    report["reachable_payload_raw_bytes"] = sum(by_kind.values())
+    report["reachable_payload_unique_bytes"] = _unique_bytes(spans)
+    # Even one invalid or opaque reachable descriptor invalidates footprint
+    # completeness. Keep the numeric measurements for triage, but NEVER
+    # present them as proof that all imported collision data is understood.
+    report["payload_footprint_valid"] = (
+        not failures and
+        all(child_kinds.get(i, 0) <= 6 for i in reachable_children) and
+        all(_u32(block1, sb + si * SHAPE_STRIDE + 4) <= 5 for si in reachable_shapes)
+    )
     if report["unknown_rigid_kinds"] > 5:
         warnings.append("collision: additional unknown rigid kinds omitted")
     if report["unknown_havok_kinds"] > 5:
