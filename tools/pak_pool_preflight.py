@@ -27,6 +27,7 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 from native_geometry_links import inspect_model_links
 from native_collision_links import inspect_collision_links
 from native_collision_provenance import compare_collision_preservation, compare_base_collision_preservation, load_key_map
+from native_model_preservation import compare_static_model_preservation
 
 HEADER_FIELDS = 118
 HEADER_BYTES = HEADER_FIELDS * 4
@@ -368,6 +369,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--bin-merged", type=Path, help="merged Helm's Deep BIN, paired with --merged")
     parser.add_argument("--verify-bin-streams", action="store_true",
                         help="also verify model BIN zlib streams and inflated lengths")
+    parser.add_argument("--static-model-preservation", action="store_true",
+                        help="fail if any original host ModelInfo key/LOD/mode disappears or explicitly selected donor static model is missing")
+    parser.add_argument("--required-donor-model", action="append", default=[], type=lambda s: int(s,0),
+                        help="donor ModelInfo CRC explicitly selected for import (repeat, hex 0x...); requires --static-model-preservation")
+    parser.add_argument("--model-key-map", type=Path,
+                        help="JSON explicit donor CRC -> renamed merged CRC map; requires --static-model-preservation")
+    parser.add_argument("--strict-native-metadata", action="store_true",
+                        help="fail on zero CRC keys, duplicate keys or zero GameModeMask in merged (or base if no merged)")
     parser.add_argument("--collision-preservation", action="store_true",
                         help="read-only source donor vs merged PAK collision fingerprint comparison")
     parser.add_argument("--collision-key-map", type=Path,
@@ -411,6 +420,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--assume-effects1024", action="store_true",
                         help="what-if: runtime EFFECT registry patch 1024 applied (NOT verified)")
     args = parser.parse_args(argv)
+    if args.static_model_preservation and not (args.donor and args.merged):
+        parser.error("--static-model-preservation requires --donor and --merged")
+    if args.required_donor_model and not args.static_model_preservation:
+        parser.error("--required-donor-model requires --static-model-preservation")
+    if args.model_key_map and not args.static_model_preservation:
+        parser.error("--model-key-map requires --static-model-preservation")
+    if any(key<=0 or key>0xFFFFFFFF for key in args.required_donor_model):
+        parser.error("--required-donor-model CRC must be nonzero uint32")
     if args.collision_preservation and not (args.donor and args.merged):
         parser.error("--collision-preservation requires both --donor and --merged")
     if args.collision_key_map and not args.collision_preservation:
@@ -463,7 +480,9 @@ def main(argv: list[str] | None = None) -> int:
         assumed_caps["pfields"] = 0x4000
     try:
         def check_one(pak: Path, bin_file: Path | None) -> PakReport:
-            return inspect_pak(pak, args.deep or args.collision_preservation, args.mask, assumed_caps,
+            return inspect_pak(pak, args.deep or args.collision_preservation or
+                               args.static_model_preservation or args.strict_native_metadata,
+                               args.mask, assumed_caps,
                                args.geometry, args.native_tables, args.model_links,
                                bin_file, args.verify_bin_streams,
                                args.collision_links or args.collision_preservation)
@@ -475,8 +494,40 @@ def main(argv: list[str] | None = None) -> int:
     except (InvalidPak, OSError) as exc:
         print(f"PAK PREFLIGHT INVALID: {exc}", file=sys.stderr)
         return 2
+    # The old --deep checks report metadata problems as WARN. This explicit
+    # opt-in turns just the actual merged target's registration metadata into
+    # a hard failure, catching zeroed CRC/ModeMask and duplicate keys before
+    # the engine can silently omit invisible models.
+    if args.strict_native_metadata:
+        target = inputs["merged"] if "merged" in inputs else inputs["base"]
+        for name in ("models","textures","effects"):
+            info=target.details.get(name,{})
+            for field in ("zero_keys","duplicate_keys","zero_mode_masks"):
+                count=info.get(field,0)
+                if count:
+                    target.failures.append(
+                        f"STRICT NATIVE METADATA {name}: {count} {field}; "
+                        "target ModelInfo/registry may not register reliably"
+                    )
+    model_preservation: dict[str, object] | None = None
     preservation: dict[str, object] | None = None
     base_preservation: dict[str, object] | None = None
+    if args.static_model_preservation:
+        try:
+            model_key_map=load_key_map(args.model_key_map) if args.model_key_map else None
+            def model_b1(path: Path) -> tuple[tuple[int, ...], bytes]:
+                h,_=_header(path)
+                return h,_decode_block1(path,h)
+            host_header,host_blob=model_b1(args.base)
+            donor_header,donor_blob=model_b1(args.donor)
+            merged_header,merged_blob=model_b1(args.merged)
+            model_preservation=compare_static_model_preservation(
+                host_header,host_blob,donor_header,donor_blob,
+                merged_header,merged_blob,set(args.required_donor_model),model_key_map
+            )
+        except (InvalidPak,OSError,ValueError) as exc:
+            print(f"STATIC MODEL PRESERVATION INVALID: {exc}",file=sys.stderr)
+            return 2
     if args.collision_preservation:
         try:
             key_map = load_key_map(args.collision_key_map) if args.collision_key_map else None
@@ -496,6 +547,7 @@ def main(argv: list[str] | None = None) -> int:
         "scope": "ONE native Helm's Deep level containing static Isengard assets; no mission scripts",
         "files": {name: vars(data) for name, data in inputs.items()},
         "projection": projection(inputs["base"], inputs["donor"]) if "donor" in inputs else [],
+        "static_model_preservation": model_preservation,
         "collision_preservation": preservation,
         "base_collision_preservation": base_preservation,
         "assumed_patch_caps_not_verified": assumed_caps,
@@ -506,6 +558,8 @@ def main(argv: list[str] | None = None) -> int:
             "--collision-links checks unrelocated Block1 shape/MOPP spans, not Havok bytecode semantics or in-game collision.",
             "Collision footprint counts ModelInfo-reachable ON-DISK Block1 bytes only; no Havok runtime heap limit or actual loaded shape count is inferred.",
             "--collision-preservation compares matched model CRCs with normalized Block1 data; unmatched donor keys are not automatically expected imports.",
+            "--static-model-preservation requires ALL host ModelInfo keys and only EXPLICIT donor CRCs; presence is NOT scene placement or correct BIN contents.",
+            "--strict-native-metadata is opt-in and treats zero/duplicate CRC and zero GameModeMask on the target as hard failures.",
             "Conservative paired sums are not a substitute for inspecting the actual merged PAK.",
             "A low runtime registry count does NOT prove success: factory may return before insertion.",
             "Mask-eligible models are separate from RAW ModelInfo counts tested by the early factory guard.",
@@ -548,6 +602,13 @@ def main(argv: list[str] | None = None) -> int:
                 print("  FAIL: " + error)
             for warning in report.warnings:
                 print("  WARN: " + warning)
+        if model_preservation is not None:
+            print("\\n[STATIC MODEL IDENTITY PRESERVATION / read-only]")
+            for label in ("base_models","base_preserved","requested_donor_models",
+                          "donor_present","strict_failures"):
+                print(f"  {label}: {model_preservation[label]}")
+            for sample in model_preservation["samples"]:
+                print(f"  {sample['status']}: {sample['source_key']} -> {sample['target_key']} ({sample['detail']})")
         if base_preservation is not None:
             host = base_preservation
             print("\n[BASE COLLISION PRESERVATION / read-only]")
@@ -574,6 +635,8 @@ def main(argv: list[str] | None = None) -> int:
         if "merged" not in inputs:
             print("\nActual merged PAK not supplied: capacity outcome is not confirmed.")
         print("No file was modified.")
+    if model_preservation is not None and model_preservation["strict_failures"]:
+        definite_failure = True
     if args.require_donor_collision and preservation is not None and preservation["strict_failures"]:
         definite_failure = True
     if args.require_base_collision and base_preservation is not None and base_preservation["strict_failures"]:
