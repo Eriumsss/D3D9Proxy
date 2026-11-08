@@ -130,7 +130,7 @@ class NativeAnimationBindingCache(unittest.TestCase):
         self.assertIn("animation_binding_cache_512.cpp",BUILD)
         self.assertIn("animation_binding_cache_512.obj",BUILD)
         self.assertIn("src/animation_binding_cache_512.cpp",CMAKE)
-        self.assertIn("animation_binding_cache_512.cpp geometry_budget_telemetry.cpp",WF)
+        self.assertIn("gfx_registry_512.cpp animation_binding_cache_512.cpp auxiliary_registry_8192.cpp",WF)
 
     def test_ci_and_docs_are_always_present(self):
         self.assertIn("test_animation_binding_cache_512.py -v",WF)

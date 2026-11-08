@@ -11,7 +11,7 @@ The checked original `ConquestLLC.exe` (SHA-256 `3ac61c2fe3b61288f06496e0a77a57b
 | Outer **clip CRC → skeleton map** registry | `FUN_008F90BC` virtual method, vtable `0x009C7A24`; setup call `0x00917E2B` | 8-byte `{u32 CRC, map*}` at registry+0x0C | 64 | **256 / 512** |
 | Inner **skeleton CRC → resolved binding** map | `0x008F9301` calls `FUN_0040B4CB` | 8-byte `{u32 CRC, binding*}` | 64 | **256 / 512** |
 
-The outer reserve method sets the init bit on exit by tail-jumping into `FUN_0089F25C`, which matters during level teardown. The inner reserve helper `FUN_0040B4CB` **also serves the separate GFX block registry** at `0x00876E6F`. Raising its 64 literal globally would change both owners and could interfere with the GFX registry patch.
+The outer reserve method sets the init bit on exit by tail-jumping into `FUN_0089F25C`, which matters during level teardown. The inner reserve helper `FUN_0040B4CB` (address `0x0040B4CB`) **also serves the separate GFX block registry** at `0x00876E6F`. Raising its 64 literal globally would change both owners and could interfere with the GFX registry patch.
 
 ## Actual C++ x86 patches
 
