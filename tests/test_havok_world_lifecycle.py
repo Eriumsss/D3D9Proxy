@@ -73,7 +73,7 @@ class HavokWorldLifecycleContract(unittest.TestCase):
 
     def test_opt_in_alone_uses_existing_worker_and_does_not_break_other_monitors(self):
         self.assertIn('"StaticMapPools","PhysicsWorldMonitor",0,ini)',CPP)
-        self.assertIn("if (!staticOn && !blendOn && !physicsOn) return;",CPP)
+        self.assertIn("if (!staticOn && !blendOn && !physicsOn && !eventOn) return;",CPP)
         self.assertIn("PollPhysicsWorld(); // independent",CPP)
         self.assertLess(CPP.index("PollPhysicsWorld(); // independent"),
                         CPP.index("if (!g_staticMonitorEnabled) return;"))
