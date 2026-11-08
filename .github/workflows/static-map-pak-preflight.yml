@@ -5,6 +5,8 @@ on:
       - 'tools/pak_pool_preflight.py'
       - 'tests/test_pak_pool_preflight.py'
       - 'tests/test_static_geometry_preflight.py'
+      - 'tests/test_runtime_pool_pressure.py'
+      - 'RUNTIME_POOL_PRESSURE.md'
       - 'tests/test_model_bin_link_preflight.py'
       - 'tools/native_geometry_links.py'
       - 'tools/native_collision_links.py'
@@ -63,6 +65,8 @@ on:
       - 'tools/pak_pool_preflight.py'
       - 'tests/test_pak_pool_preflight.py'
       - 'tests/test_static_geometry_preflight.py'
+      - 'tests/test_runtime_pool_pressure.py'
+      - 'RUNTIME_POOL_PRESSURE.md'
       - 'tests/test_model_bin_link_preflight.py'
       - 'tools/native_geometry_links.py'
       - 'tools/native_collision_links.py'
@@ -140,6 +144,8 @@ jobs:
         run: python3 -m unittest discover -s tests -p test_native_table_preflight.py -v
       - name: Read-only retail static D3D buffer allocation telemetry contracts
         run: python3 -m unittest discover -s tests -p test_geometry_budget_telemetry.py -v
+      - name: Native runtime pool-pressure CSV read-only contracts
+        run: python3 -m unittest discover -s tests -p test_runtime_pool_pressure.py -v
       - name: GZF model registry x86 opcode and transactional patch contract
         run: python3 -m unittest discover -s tests -p test_model_registry_2048.py -v
       - name: GZF texture registry x86 opcode and 4096-entry patch contract
