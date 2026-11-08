@@ -34,6 +34,16 @@ static const uintptr_t kBlendCounterOffset = 0x3E000;
 static const unsigned kBlendSlotStride = 0xF8;
 static const unsigned kBlendRetailCapacity = 0x400;
 static const DWORD kBlendLogMs = 1000;
+// Stock animation-event pool: distinct from 0xF8-byte animation BLEND slots.
+// MgAgSpineEval.inc, MgAnimEventDrain.inc, PostAnimEvent FUN_0088AA78.
+// The original event record indices are uint16 and full sentinel is 0xFFFF.
+static const uintptr_t kEventPoolBaseCell=0x00CD9970;
+static const uintptr_t kEventPoolHeadCell=0x00CD996C;
+static const uintptr_t kEventPoolCountCell=0x00CD9974;
+static const uintptr_t kEventFactoryGuard=0x0088AA85;
+static const unsigned kEventStockCapacity=0x400;
+static const unsigned kEventRecordStride=0x30;
+static const DWORD kEventLogMs=1000;
 // Reconstructed retail MgPhysics.cpp: [0x00CD7ED0] owns the 0x220-byte
 // physics manager (vtbl 0x009CAF94); manager+0xFC holds the hkpWorld*;
 // manager+0xE8 holds the SDK thread-memory pointer; +0x1AD is the
@@ -72,6 +82,11 @@ static char g_output[MAX_PATH];
 static char g_pressureOutput[MAX_PATH];
 static char g_vaOutput[MAX_PATH];
 static char g_blendOutput[MAX_PATH];
+static char g_eventOutput[MAX_PATH];
+static bool g_eventMonitorEnabled=false;
+static DWORD g_lastEventLog=0;
+static DWORD g_eventLastBase=0;
+static unsigned g_eventPeak=0;
 static char g_physicsOutput[MAX_PATH];
 static char g_physicsVaOutput[MAX_PATH];
 // Off by default, even when PhysicsWorldMonitor=1. VirtualQuery of the
@@ -627,7 +642,99 @@ static void PollPhysicsWorld() {
     LogWorldVaCorrelation(now,level,manager,world,loading,valid,status,transition);
 }
 
+// Never trust the old memorypatch.cpp "4096" diagnostics for this arena.
+// The unmodified retail instruction is CMP DWORD PTR [0x00CD9974], 0x400;
+// if another module patched it, capacity is UNKNOWN, not "4096 active".
+static bool EventGuardIsStock() {
+    static const BYTE expected[]={
+        0x81,0x3D,0x74,0x99,0xCD,0x00,0x00,0x04,0x00,0x00
+    };
+    if (!CanRead(kEventFactoryGuard,sizeof(expected))) return false;
+    __try {
+        return memcmp((const void*)kEventFactoryGuard,expected,sizeof(expected))==0;
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+// This sampler is evidence for a future real 4096-slot allocator rewrite,
+// NOT an expansion. A count of 1024 is an exhaustion signal, while a
+// non-null freeHead may mean recycled slots can still satisfy allocations.
+// Only one existing worker is used; zero game-memory writes.
+static void PollEventPool() {
+    if (!g_eventMonitorEnabled) return;
+    const DWORD now=GetTickCount();
+    if (g_lastEventLog && (DWORD)(now-g_lastEventLog)<kEventLogMs) return;
+    g_lastEventLog=now;
+
+    DWORD base=0,head=0,count=0,againBase=0,againHead=0,againCount=0;
+    DWORD allocBase=0,regionType=0;
+    bool valid=false;
+    const char* status="UNVERIFIED_RETAIL_GUARD";
+    const uintptr_t arenaBytes=(uintptr_t)kEventStockCapacity*kEventRecordStride;
+    if (EventGuardIsStock()) {
+        status="UNREADABLE_GLOBALS";
+        if (ReadDword(kEventPoolBaseCell,base) &&
+            ReadDword(kEventPoolHeadCell,head) &&
+            ReadDword(kEventPoolCountCell,count)) {
+            status="NO_POOL";
+            if (!base) {
+                valid=(!head && !count);
+                if (!valid) status="INVALID_UNINITIALIZED";
+            } else if (count>kEventStockCapacity) {
+                status="COUNT_EXCEEDS_STOCK";
+            } else if ((uintptr_t)base>UINTPTR_MAX-arenaBytes) {
+                status="BAD_ARENA_RANGE";
+            } else {
+                status="BAD_FREE_HEAD";
+                const uintptr_t first=(uintptr_t)base;
+                const uintptr_t finish=first+arenaBytes;
+                if (!head || ((uintptr_t)head>=first &&
+                    (uintptr_t)head<finish &&
+                    (((uintptr_t)head-first)%kEventRecordStride)==0)) {
+                    status="UNREADABLE_ARENA";
+                    if (CanRead(first,arenaBytes)) {
+                        MEMORY_BASIC_INFORMATION region={0};
+                        if (VirtualQuery((LPCVOID)first,&region,sizeof(region))) {
+                            allocBase=(DWORD)(uintptr_t)region.AllocationBase;
+                            regionType=(DWORD)region.Type; // observation, not ownership proof
+                        }
+                        status="RACED";
+                        if (ReadDword(kEventPoolBaseCell,againBase) &&
+                            ReadDword(kEventPoolHeadCell,againHead) &&
+                            ReadDword(kEventPoolCountCell,againCount) &&
+                            base==againBase && head==againHead &&
+                            count==againCount && EventGuardIsStock()) {
+                            valid=true;
+                            status=count==kEventStockCapacity ? "AT_STOCK_CAP" :
+                                   count>=kEventStockCapacity-16 ? "NEAR_STOCK_CAP" : "OK";
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (base!=g_eventLastBase) {
+        g_eventLastBase=base;
+        g_eventPeak=0;
+    }
+    if (valid && base && count>g_eventPeak) g_eventPeak=count;
+
+    FILE* fp=NULL;
+    if (fopen_s(&fp,g_eventOutput,"ab+")!=0 || !fp) return;
+    if (fseek(fp,0,SEEK_END)==0 && ftell(fp)==0)
+        fputs("time_ms,process_id,pool_base,free_head,used_count,stock_capacity,"
+              "peak_used_count,allocation_base,region_type,valid,status\n",fp);
+    fprintf(fp,"%lu,%lu,%08lX,%08lX,%lu,%u,%u,%08lX,%08lX,%u,%s\n",
+            (unsigned long)now,(unsigned long)GetCurrentProcessId(),
+            (unsigned long)base,(unsigned long)head,(unsigned long)count,
+            kEventStockCapacity,g_eventPeak,(unsigned long)allocBase,
+            (unsigned long)regionType,(unsigned)valid,status);
+    fclose(fp);
+}
+
 static void Poll() {
+    PollEventPool(); // independent of scene registry, blend-slot and Havok counters
     PollPhysicsWorld(); // independent of static-level registry and blend monitors
     PollBlend(); // valid even while level_object=0
     if (!g_staticMonitorEnabled) return;
@@ -709,10 +816,11 @@ void OC_StaticPoolCensus_Init() {
     if (_snprintf_s(ini,sizeof(ini),_TRUNCATE,"%sproxy.ini",exe)<0) return;
     const bool staticOn=GetPrivateProfileIntA("StaticMapPools","Monitor",0,ini)!=0;
     const bool blendOn=GetPrivateProfileIntA("StaticMapPools","BlendMonitor",0,ini)!=0;
+    const bool eventOn=GetPrivateProfileIntA("StaticMapPools","EventPoolMonitor",0,ini)!=0;
     const bool physicsOn=GetPrivateProfileIntA("StaticMapPools","PhysicsWorldMonitor",0,ini)!=0;
     const bool physicsVaOn=physicsOn &&
         GetPrivateProfileIntA("StaticMapPools","PhysicsVaCorrelation",0,ini)!=0;
-    if (!staticOn && !blendOn && !physicsOn) return;
+    if (!staticOn && !blendOn && !physicsOn && !eventOn) return;
     if (staticOn) {
         if (_snprintf_s(g_output,sizeof(g_output),_TRUNCATE,
                         "%sstatic_map_pools.csv",exe)<0) return;
@@ -723,6 +831,8 @@ void OC_StaticPoolCensus_Init() {
     }
     if (blendOn && _snprintf_s(g_blendOutput,sizeof(g_blendOutput),_TRUNCATE,
                                 "%sanimation_blend_pool.csv",exe)<0) return;
+    if (eventOn && _snprintf_s(g_eventOutput,sizeof(g_eventOutput),_TRUNCATE,
+                                "%sanimation_event_pool.csv",exe)<0) return;
     if (physicsOn && _snprintf_s(g_physicsOutput,sizeof(g_physicsOutput),_TRUNCATE,
                                   "%shavok_world_lifecycle.csv",exe)<0) return;
     if (physicsVaOn &&
@@ -730,6 +840,7 @@ void OC_StaticPoolCensus_Init() {
                     "%shavok_world_va_pressure.csv",exe)<0) return;
     g_staticMonitorEnabled=staticOn;
     g_blendMonitorEnabled=blendOn;
+    g_eventMonitorEnabled=eventOn;
     g_physicsMonitorEnabled=physicsOn;
     g_physicsVaEnabled=physicsVaOn;
     if (g_physicsVaEnabled) GetSystemTimeAsFileTime(&g_physicsVaSession);

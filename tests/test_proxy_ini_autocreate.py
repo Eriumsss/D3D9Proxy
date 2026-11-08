@@ -65,6 +65,7 @@ class ProxyIniAutocreate(unittest.TestCase):
         self.assertEqual(pool.getint("Monitor"),1)
         self.assertEqual(pool.getint("GeometryBudget"),1)
         self.assertEqual(pool.getint("BlendMonitor"),0)
+        self.assertEqual(pool.getint("EventPoolMonitor"),0)
         self.assertEqual(pool.getint("PhysicsWorldMonitor"),0)
         self.assertEqual(pool.getint("PhysicsVaCorrelation"),0)
         self.assertEqual(self.config["RetailHeapExtender"].getint("Enabled"),0)

@@ -190,3 +190,22 @@ rather than the usual warnings. Companion `--model-links` with matching
 BINs and `--collision-preservation` remain independent checks.
 No in-game changes, patches or PAK writes occur.
 See [STATIC_MODEL_PRESERVATION.md](STATIC_MODEL_PRESERVATION.md).
+
+### Animation EVENT pool is NOT the blend pool
+
+The retail anim-event pool at `0x00CD9970` contains **1024 × 0x30-byte
+records**. The separate 1024 × 0xF8 blend-slot array is controlled by
+`FUN_0045549C`. Legacy `memorypatch.cpp` incorrectly treated
+`POOL_MAX_ENTRIES=0x1000` as the unexpanded stock event-pool capacity
+and attempted to use the blend guard (Patch 29) as a second event guard.
+
+This is corrected: the native stock event freelist validator uses
+**1024 entries**, and unsafe legacy Patch 6 and Patch 29 remain OFF
+with compile-time guards against accidentally enabling them.
+A new `EventPoolMonitor=1` (default OFF) independently collects a
+guard-validated `animation_event_pool.csv`. The offline runtime
+pressure analyzer reports event used-count peaks separately from
+blend next-free indices. **This is NOT a 4096-slot event-pool expansion**;
+native allocation, teardown and all producer/consumer bounds must
+be verified before writing a replacement allocator.
+See [ANIMATION_EVENT_POOL.md](ANIMATION_EVENT_POOL.md).

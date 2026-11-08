@@ -92,6 +92,7 @@ def summarize(directory: Path, threshold_mib: int = 128):
         "reset_list_peaks":{},
         "binding_peaks":{},
         "blend_pool":{},
+        "event_pool":{},
         "notes":notes,
     }
 
@@ -171,6 +172,52 @@ def summarize(directory: Path, threshold_mib: int = 128):
             notes.append("Fixed animation blend next-free index sampled near 1024 (NOT a live-object count)")
         if blend["invalid_samples"]:
             notes.append("Some blend samples were invalid or used an unverified retail guard")
+    event_file=directory / "animation_event_pool.csv"
+    if event_file.is_file():
+        event={"valid_samples":0,"invalid_samples":0,
+               "peak_used_count":0,"retail_capacity":1024,
+               "at_stock_cap_samples":0,"unverified_guard_samples":0,
+               "other_invalid_samples":0}
+        for record in rows(event_file):
+            try:
+                status=record.get("status","").strip()
+                valid=number(record,"valid")
+                cap=number(record,"stock_capacity")
+                used=number(record,"used_count")
+                peak=number(record,"peak_used_count")
+                if valid!=1 or cap!=1024 or used>cap or peak>cap or peak<used:
+                    event["invalid_samples"]+=1
+                    if status=="UNVERIFIED_RETAIL_GUARD":
+                        event["unverified_guard_samples"]+=1
+                    else:
+                        event["other_invalid_samples"]+=1
+                    continue
+                if status not in ("OK","NEAR_STOCK_CAP","AT_STOCK_CAP","NO_POOL"):
+                    event["invalid_samples"]+=1
+                    event["other_invalid_samples"]+=1
+                    continue
+                if status=="NO_POOL" and used!=0:
+                    event["invalid_samples"]+=1
+                    event["other_invalid_samples"]+=1
+                    continue
+                if status=="AT_STOCK_CAP" and used!=cap:
+                    event["invalid_samples"]+=1
+                    event["other_invalid_samples"]+=1
+                    continue
+                event["valid_samples"]+=1
+                event["peak_used_count"]=max(event["peak_used_count"],peak)
+                if status=="AT_STOCK_CAP":
+                    event["at_stock_cap_samples"]+=1
+            except (ValueError,TypeError):
+                event["invalid_samples"]+=1
+                event["other_invalid_samples"]+=1
+        result["event_pool"]=event
+        if event["at_stock_cap_samples"]:
+            notes.append("Native animation EVENT pool reached 1024 records; free-list reuse and allocation failures still require runtime evidence")
+        elif event["peak_used_count"]>=1008:
+            notes.append("Native animation EVENT pool observed near 1024 stock records; NOT the separate 0xF8 blend-slot pool")
+        if event["unverified_guard_samples"]:
+            notes.append("Native animation event guard did not match the stock retail opcode; capacity was NOT inferred")
     return result
 
 def format_report(result):
@@ -191,6 +238,11 @@ def format_report(result):
         lines.append(f"Reset list {name}: sampled peak={count} (actual allocated cap unknown)")
     for name, count in sorted(result["binding_peaks"].items()):
         lines.append(f"Animation {name}: sampled peak={count}")
+    if result["event_pool"]:
+        ep=result["event_pool"]
+        lines.append(f"Animation EVENT pool: stock=1024, sampled peak={ep['peak_used_count']}; "
+                     f"at-cap samples={ep['at_stock_cap_samples']}, "
+                     f"valid={ep['valid_samples']}, invalid={ep['invalid_samples']}")
     if result["blend_pool"]:
         p=result["blend_pool"]
         lines.append(f"Fixed animation blend: sampled next-free peak={p['peak_next_free_index']} / stock cap={p['retail_capacity']}; valid={p['valid_samples']}; invalid={p['invalid_samples']}")
