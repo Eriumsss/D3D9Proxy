@@ -34,6 +34,16 @@ static const uintptr_t kBlendCounterOffset = 0x3E000;
 static const unsigned kBlendSlotStride = 0xF8;
 static const unsigned kBlendRetailCapacity = 0x400;
 static const DWORD kBlendLogMs = 1000;
+// Reconstructed retail MgPhysics.cpp: [0x00CD7ED0] owns the 0x220-byte
+// physics manager (vtbl 0x009CAF94); manager+0xFC holds the hkpWorld*;
+// manager+0xE8 holds the SDK thread-memory pointer; +0x1AD is the
+// level-loading flag. These are pointer observations, NOT allocator limits.
+static const uintptr_t kPhysicsMgrCell = 0x00CD7ED0;
+static const DWORD kPhysicsMgrVtable = 0x009CAF94;
+static const uintptr_t kPhysicsWorldOffset = 0xFC;
+static const uintptr_t kPhysicsThreadMemoryOffset = 0xE8;
+static const uintptr_t kPhysicsLoadingFlagOffset = 0x1AD;
+static const DWORD kPhysicsLogMs = 1000;
 static const unsigned kMaxReasonableCount = 0x4000;
 
 struct Registry {
@@ -62,6 +72,14 @@ static char g_output[MAX_PATH];
 static char g_pressureOutput[MAX_PATH];
 static char g_vaOutput[MAX_PATH];
 static char g_blendOutput[MAX_PATH];
+static char g_physicsOutput[MAX_PATH];
+static bool g_physicsMonitorEnabled=false;
+static DWORD g_lastPhysicsLog=0;
+static bool g_physicsPrevValid=false;
+static DWORD g_physicsPrevWorld=0;
+static unsigned g_physicsObservedAttaches=0;
+static unsigned g_physicsObservedDetaches=0;
+static unsigned g_physicsObservedReplacements=0;
 static bool g_staticMonitorEnabled=false;
 static bool g_blendMonitorEnabled=false;
 static DWORD g_lastBlendLog=0;
@@ -96,6 +114,11 @@ static bool CanRead(uintptr_t address, size_t len) {
 static bool ReadDword(uintptr_t address, DWORD& result) {
     if (!CanRead(address,sizeof(DWORD))) return false;
     __try { result=*(volatile const DWORD*)address; return true; }
+    __except(EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+static bool ReadByte(uintptr_t address, BYTE& result) {
+    if (!CanRead(address,sizeof(BYTE))) return false;
+    __try { result=*(volatile const BYTE*)address; return true; }
     __except(EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 static bool ReadRegistry(uintptr_t level,const Registry& reg,Cell& out) {
@@ -472,7 +495,89 @@ static void PollBlend() {
     fclose(f);
 }
 
+// The physics manager is process-scoped, but its +0xFC hkpWorld* changes
+// across level enter/exit. Watch only that ownership edge. This DOES NOT
+// instrument hkPoolMemory, hkpShape allocation, or a Havok pool ceiling.
+static void PollPhysicsWorld() {
+    if (!g_physicsMonitorEnabled) return;
+    const DWORD now=GetTickCount();
+    if (g_lastPhysicsLog && (DWORD)(now-g_lastPhysicsLog)<kPhysicsLogMs) return;
+    g_lastPhysicsLog=now;
+
+    DWORD level=0, manager=0, vtable=0, threadMemory=0, world=0;
+    DWORD sameManager=0, sameWorld=0;
+    BYTE loading=0;
+    const unsigned levelValid=ReadDword(kLevelObjectCell,level)?1u:0u;
+    bool valid=false;
+    const char* status="UNREADABLE_ROOT";
+    if (ReadDword(kPhysicsMgrCell,manager)) {
+        if (!manager) {
+            valid=true;
+            status="NO_MANAGER";
+        } else {
+            status="BAD_MANAGER_VTABLE";
+            if (ReadDword((uintptr_t)manager,vtable) &&
+                vtable==kPhysicsMgrVtable) {
+                status="UNREADABLE_MANAGER_FIELDS";
+                if (ReadDword((uintptr_t)manager+kPhysicsWorldOffset,world) &&
+                    ReadDword((uintptr_t)manager+kPhysicsThreadMemoryOffset,threadMemory) &&
+                    ReadByte((uintptr_t)manager+kPhysicsLoadingFlagOffset,loading)) {
+                    status="UNREADABLE_WORLD";
+                    if (!world || CanRead((uintptr_t)world,sizeof(DWORD))) {
+                        status="RACED";
+                        // The manager and world can be replaced by another
+                        // game thread during the sample. Never emit a trusted
+                        // transition from inconsistent pointers.
+                        if (ReadDword(kPhysicsMgrCell,sameManager) &&
+                            ReadDword((uintptr_t)manager+kPhysicsWorldOffset,sameWorld) &&
+                            sameManager==manager && sameWorld==world) {
+                            valid=true;
+                            status=world ? "WORLD_PRESENT" : "NO_WORLD";
+                        }
+                    }
+                }
+            }
+        }
+    }
+    const char* transition="NONE";
+    if (!valid) {
+        g_physicsPrevValid=false;
+        transition="UNKNOWN";
+    } else if (!g_physicsPrevValid) {
+        transition="INITIAL_SAMPLE";
+    } else if (!g_physicsPrevWorld && world) {
+        ++g_physicsObservedAttaches;
+        transition="WORLD_APPEARED";
+    } else if (g_physicsPrevWorld && !world) {
+        ++g_physicsObservedDetaches;
+        transition="WORLD_DISAPPEARED";
+    } else if (g_physicsPrevWorld && world && g_physicsPrevWorld!=world) {
+        ++g_physicsObservedReplacements;
+        transition="WORLD_REPLACED";
+    }
+    if (valid) {
+        g_physicsPrevWorld=world;
+        g_physicsPrevValid=true;
+    }
+
+    FILE* f=NULL;
+    if (fopen_s(&f,g_physicsOutput,"ab+")!=0 || !f) return;
+    if (fseek(f,0,SEEK_END)==0 && ftell(f)==0)
+        fputs("time_ms,level_object,level_valid,manager_ptr,manager_vtable,"
+              "thread_memory_ptr,world_ptr,loading_flag,valid,status,transition,"
+              "observed_attaches,observed_detaches,observed_replacements\n",f);
+    fprintf(f,"%lu,%08lX,%u,%08lX,%08lX,%08lX,%08lX,%u,%u,%s,%s,%u,%u,%u\n",
+            (unsigned long)now,(unsigned long)level,levelValid,
+            (unsigned long)manager,(unsigned long)vtable,
+            (unsigned long)threadMemory,(unsigned long)world,
+            (unsigned)loading,(unsigned)valid,status,transition,
+            g_physicsObservedAttaches,g_physicsObservedDetaches,
+            g_physicsObservedReplacements);
+    fclose(f);
+}
+
 static void Poll() {
+    PollPhysicsWorld(); // independent of static-level registry and blend monitors
     PollBlend(); // valid even while level_object=0
     if (!g_staticMonitorEnabled) return;
     DWORD levelRaw=0, poolRaw=0;
@@ -553,7 +658,8 @@ void OC_StaticPoolCensus_Init() {
     if (_snprintf_s(ini,sizeof(ini),_TRUNCATE,"%sproxy.ini",exe)<0) return;
     const bool staticOn=GetPrivateProfileIntA("StaticMapPools","Monitor",0,ini)!=0;
     const bool blendOn=GetPrivateProfileIntA("StaticMapPools","BlendMonitor",0,ini)!=0;
-    if (!staticOn && !blendOn) return;
+    const bool physicsOn=GetPrivateProfileIntA("StaticMapPools","PhysicsWorldMonitor",0,ini)!=0;
+    if (!staticOn && !blendOn && !physicsOn) return;
     if (staticOn) {
         if (_snprintf_s(g_output,sizeof(g_output),_TRUNCATE,
                         "%sstatic_map_pools.csv",exe)<0) return;
@@ -564,8 +670,11 @@ void OC_StaticPoolCensus_Init() {
     }
     if (blendOn && _snprintf_s(g_blendOutput,sizeof(g_blendOutput),_TRUNCATE,
                                 "%sanimation_blend_pool.csv",exe)<0) return;
+    if (physicsOn && _snprintf_s(g_physicsOutput,sizeof(g_physicsOutput),_TRUNCATE,
+                                  "%shavok_world_lifecycle.csv",exe)<0) return;
     g_staticMonitorEnabled=staticOn;
     g_blendMonitorEnabled=blendOn;
+    g_physicsMonitorEnabled=physicsOn;
     // Evidence only: dump constructor and factory guard opcode windows, which
     // the next patch must verify against the Ghidra database before writes.
     DumpCodeSiteFingerprints(exe);
