@@ -33,6 +33,7 @@ static const DWORD kLiveCountCell=0x00CD9974;
 static const DWORD kPostGuard=0x0088AA85;
 static const DWORD kPostGuardImm=0x0088AA8B;
 static const DWORD kNativePoolInit=0x00404C2F;
+static const DWORD kNativeStaticCtor=0x009555DF;
 static const DWORD kKnownPoolNeighbour=0x00404BF2;
 static const DWORD kStockCap=0x400;
 static const DWORD kNewCap=0x1000;
@@ -81,10 +82,29 @@ static bool Idle() {
     return Word(kLevelCell,lvl) && Word(kResourceMgrCell,mgr) &&
            lvl==0 && mgr==0;
 }
+// Validate the retail static event-pool constructor REALLY calls the native
+// PoolInit target. An arbitrary executable at the right image base is not
+// sufficient evidence to invoke an internal __stdcall function pointer.
+static bool NativeCtorReferencesPoolInit() {
+    static const DWORD kBytes=0x20;
+    if (!Readable(kNativeStaticCtor,kBytes)) return false;
+    __try {
+        for (DWORD i=0;i+5<=kBytes;++i) {
+            const BYTE* inst=(const BYTE*)(uintptr_t)(kNativeStaticCtor+i);
+            if (inst[0]!=0xE8) continue;
+            int32_t rel=0;
+            memcpy(&rel,inst+1,sizeof(rel));
+            const intptr_t target=(intptr_t)(kNativeStaticCtor+i+5)+(intptr_t)rel;
+            if ((DWORD)target==kNativePoolInit) return true;
+        }
+    } __except(EXCEPTION_EXECUTE_HANDLER) { return false; }
+    return false;
+}
 static bool StockImage() {
     return (DWORD)(uintptr_t)GetModuleHandleA(NULL)==kExeBase &&
            Same(kPostGuard,kGuardStock,sizeof(kGuardStock)) &&
            Same(kKnownPoolNeighbour,kNeighbourBefore,sizeof(kNeighbourBefore)) &&
+           NativeCtorReferencesPoolInit() &&
            Readable(kNativePoolInit,0x3D);
 }
 struct Header {
