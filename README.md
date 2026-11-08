@@ -15,6 +15,8 @@ Standalone, public **x86 Direct3D 9 proxy** for *The Lord of the Rings: Conquest
 | **Resource Other (+0xF4)** | **2048** | **4096 or 8192** |
 | **PFields (+0x114)** | **4096** | **8192** |
 | **D3D9 device-reset list** | **64** | **1024 or 4096** |
+| **Dynamic VB recreate list** | **64** | **1024 or 4096** |
+| **Dynamic IB recreate list** | **64** | **1024 or 4096** |
 
 The six registries and separate D3D9 device-reset list are **OFF by default** and gated by original x86 instruction fingerprints. Havok and transient geometry pools are not modified. A successful DLL build or synthetic test does **not** prove an expanded map runs correctly in the game.
 
@@ -34,6 +36,8 @@ ExpandResourceOther8192=0
 ExpandPFields8192=0
 ExpandDeviceResetResources1024=0
 ExpandDeviceResetResources4096=0
+ExpandDynamicBufferReset1024=0
+ExpandDynamicBufferReset4096=0
 GeometryBudget=1
 ```
 
@@ -95,3 +99,7 @@ Recovered x86 code proves the **true retail PField reserve is 4096** rather than
 ### Device-reset resource pool (separate from static geometry)
 
 The original 64-pointer list is allocated by the game at 0x00967C27, registered at 0x0068D892 and freed at 0x0096F72D. New opt-in C++ code expands to 1024 or 4096 pointers and guards the formerly unchecked append. If the CRT already allocated 64 slots, it grows the same native allocation through the game's original 0x0067E662 realloc when there are no live entries. It does not modify managed VB/IB or Havok. See DEVICE_RESET_POOL_4096.md for exact machine code and limits. Game runtime validation is pending.
+
+### Dynamic VB/IB native reset-list pool expansion
+
+Two independent 64-pointer arrays ([0x00A41520] for dynamic VB, [0x00A4152C] for dynamic IB) have unchecked original register writes. Opt-in `ExpandDynamicBufferReset1024=1` or `ExpandDynamicBufferReset4096=1` increases BOTH original allocation and registration limits, using the existing native allocator and isolated x86 guard trampolines. Neither changes the generic device-reset resource list, Havok, or managed static geometry buffers. See [DYNAMIC_BUFFER_RESET_POOLS_4096.md](DYNAMIC_BUFFER_RESET_POOLS_4096.md). The automatic `proxy.ini` generator from PR #7 includes both options, disabled by default. Gameplay reset/reload validation is still required.
