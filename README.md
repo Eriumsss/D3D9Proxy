@@ -173,3 +173,20 @@ compared **only within the same launch session and process**.
 This is process-wide VA, **NOT Havok allocator bytes or leak proof**.
 No EXE hook, PAK write or allocator expansion is introduced.
 See [HAVOK_VA_CORRELATION.md](HAVOK_VA_CORRELATION.md).
+
+### Strict static ModelInfo import validation (opt-in)
+
+`tools/pak_pool_preflight.py` now supports
+`--static-model-preservation --required-donor-model 0xCRC` to reject
+merged PAKs that lose **any original Helm's Deep ModelInfo identity**
+(including collisionless models), drop original GameModeMask bits, or
+lose all LOD meshes for selected imported Isengard models. Only explicitly
+named donor CRCs are required; the tool does not pretend the full donor
+world or mission was imported. `--model-key-map` maps renamed donor CRCs.
+
+Use `--strict-native-metadata` to turn zero CRC keys, duplicate CRC keys
+and zero GameModeMask counts in the **target PAK** into hard failures,
+rather than the usual warnings. Companion `--model-links` with matching
+BINs and `--collision-preservation` remain independent checks.
+No in-game changes, patches or PAK writes occur.
+See [STATIC_MODEL_PRESERVATION.md](STATIC_MODEL_PRESERVATION.md).
