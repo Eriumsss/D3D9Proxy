@@ -30,6 +30,7 @@ static const char kDefaultIni[] =
     "; Read-only diagnostics\r\n"
     "Monitor=1\r\n"
     "GeometryBudget=1\r\n"
+    "BlendMonitor=0\r\n"
     "\r\n"
     "; Static native registries\r\n"
     "ExpandModels2048=0\r\n"
