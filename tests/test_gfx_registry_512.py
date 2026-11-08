@@ -77,8 +77,10 @@ class GfxBlockCapacity(unittest.TestCase):
     def test_both_capacity_tiers_are_real_and_default_off(self):
         for needle in ("kCap256=0x100","kCap512=0x200",
                        '"ExpandGfx256",0,ini','"ExpandGfx512",0,ini',
-                       "if (!high && !low) return",
-                       "Install(high?kCap512:kCap256)"):
+                       "if (!ultra && !high && !low) return",
+                       "kCap1024=0x400",
+                       '"ExpandGfx1024",0,ini',
+                       "Install(ultra?kCap1024:(high?kCap512:kCap256))"):
             self.assertIn(needle,CPP)
 
     def test_installation_fails_closed_and_rolls_back(self):
