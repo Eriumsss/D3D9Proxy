@@ -55,7 +55,7 @@ class RuntimePressureContract(unittest.TestCase):
     def test_no_fake_capacity_from_user_config(self):
         census=CPP[CPP.index("struct ResetList"):CPP.index("static void Poll()")]
         self.assertNotIn("cap=4096",census)
-        self.assertIn("allocated byte sizes are not exposed",census)
+        self.assertIn("4096 is a supported cap, not a proof of the active allocation",census)
         self.assertIn("result.valid=1",census)
 
     def test_per_level_peaks_reset_and_update_only_from_valid_counts(self):
