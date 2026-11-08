@@ -177,7 +177,8 @@ static ResetSample ObserveReset(const ResetList& list) {
         return result;
     // 4096 is a supported cap, not a proof of the active allocation.
     // Reject pathological/corrupted counts without following any pointers.
-    if (count>0x10000 || (count!=0 && base==0))
+    if (count>0x10000 || (count!=0 && base==0) ||
+        (count!=0 && !CanRead((uintptr_t)base,(size_t)count*4u)))
         return result;
     result.count=count;
     result.valid=1;
@@ -250,6 +251,22 @@ static BindSample ObserveBindings() {
     }
     return out;
 }
+static BindSample g_latestBinding={0,0,0,0,0,0,0,0};
+static ResetSample g_latestReset[3]={{0,0},{0,0},{0,0}};
+
+// Sample every 250ms on the EXISTING worker, log latest sample every 2s.
+static void SamplePressure() {
+    g_latestBinding=ObserveBindings();
+    if (g_latestBinding.valid && g_latestBinding.clips>g_clipPeak)
+        g_clipPeak=g_latestBinding.clips;
+    if (g_latestBinding.valid && g_latestBinding.innerPairs>g_innerPairsPeak)
+        g_innerPairsPeak=g_latestBinding.innerPairs;
+    for (unsigned i=0;i<3;++i) {
+        g_latestReset[i]=ObserveReset(kResetLists[i]);
+        if (g_latestReset[i].valid && g_latestReset[i].count>g_resetPeaks[i])
+            g_resetPeaks[i]=g_latestReset[i].count;
+    }
+}
 static void PressureHeader(FILE* f) {
     fputs("time_ms,level_object,bind_present,bind_valid,clip_count,clip_cap,"
           "clip_peak,inner_maps,inner_pairs,inner_pairs_peak,max_inner_count,"
@@ -259,18 +276,10 @@ static void PressureHeader(FILE* f) {
 }
 static void LogPressure(DWORD now,DWORD levelRaw) {
     if (!g_pressureOutput[0]) return;
-    const BindSample binding=ObserveBindings();
-    const ResetSample dev=ObserveReset(kResetLists[0]);
-    const ResetSample vb=ObserveReset(kResetLists[1]);
-    const ResetSample ib=ObserveReset(kResetLists[2]);
-    const ResetSample rows[3]={dev,vb,ib};
-    if (binding.valid && binding.clips>g_clipPeak)
-        g_clipPeak=binding.clips;
-    if (binding.valid && binding.innerPairs>g_innerPairsPeak)
-        g_innerPairsPeak=binding.innerPairs;
-    for (unsigned i=0;i<3;++i)
-        if (rows[i].valid && rows[i].count>g_resetPeaks[i])
-            g_resetPeaks[i]=rows[i].count;
+    const BindSample& binding=g_latestBinding;
+    const ResetSample& dev=g_latestReset[0];
+    const ResetSample& vb=g_latestReset[1];
+    const ResetSample& ib=g_latestReset[2];
     FILE* f=NULL;
     if (fopen_s(&f,g_pressureOutput,"ab+")!=0 || !f) return;
     if (fseek(f,0,SEEK_END)==0 && ftell(f)==0)
@@ -314,10 +323,11 @@ static void Poll() {
         ReadDword((uintptr_t)poolRaw+0x17FD08,poolC);
         ReadDword((uintptr_t)poolRaw+0x17FD0C,phase);
     }
+    SamplePressure(); // 250ms readings, independent from CSV write cadence
     DWORD now=GetTickCount();
     if (g_lastLog && (DWORD)(now-g_lastLog)<kLogMs) return;
     g_lastLog=now;
-    LogPressure(now,levelRaw); // read-only, sampled at the same 2s cadence
+    LogPressure(now,levelRaw); // write sampled peak + latest values every 2s
     FILE* f=NULL;
     if (fopen_s(&f,g_output,"ab+")!=0 || !f) return;
     if (fseek(f,0,SEEK_END)==0 && ftell(f)==0) Header(f);

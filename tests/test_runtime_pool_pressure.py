@@ -36,6 +36,7 @@ class RuntimePressureContract(unittest.TestCase):
 
     def test_bad_count_invalid_pointer_and_race_guard(self):
         for token in ("count>0x10000 || (count!=0 && base==0)",
+                      "!CanRead((uintptr_t)base,(size_t)count*4u)",
                       "count<0 || cap<0 || count>cap",
                       "n<0 || capacity<0 || n>capacity",
                       "n>0 && !CanRead((uintptr_t)pairs,(size_t)n*8u)",
@@ -61,9 +62,9 @@ class RuntimePressureContract(unittest.TestCase):
     def test_per_level_peaks_reset_and_update_only_from_valid_counts(self):
         for token in ("if (level != g_lastLevel)", "memset(g_resetPeaks,0,sizeof(g_resetPeaks))",
                       "g_clipPeak=0;", "g_innerPairsPeak=0;",
-                      "binding.valid && binding.clips>g_clipPeak",
-                      "binding.valid && binding.innerPairs>g_innerPairsPeak",
-                      "rows[i].valid && rows[i].count>g_resetPeaks[i]"):
+                      "g_latestBinding.valid && g_latestBinding.clips>g_clipPeak",
+                      "g_latestBinding.valid && g_latestBinding.innerPairs>g_innerPairsPeak",
+                      "g_latestReset[i].valid && g_latestReset[i].count>g_resetPeaks[i]"):
             self.assertIn(token,CPP)
 
     def test_one_existing_250ms_worker_and_2s_write_throttle(self):
@@ -72,6 +73,9 @@ class RuntimePressureContract(unittest.TestCase):
         self.assertEqual(CPP.count("static DWORD WINAPI Worker("),1)
         self.assertEqual(CPP.count("CreateThread(NULL,0,Worker,NULL,0,NULL)"),1)
         self.assertIn("LogPressure(now,levelRaw)",CPP)
+        self.assertIn("g_latestBinding=ObserveBindings();",CPP)
+        self.assertLess(CPP.index("SamplePressure(); // 250ms readings"),
+                        CPP.index("if (g_lastLog && (DWORD)(now-g_lastLog)<kLogMs) return;"))
 
     def test_csv_is_separate_and_controlled_by_existing_monitor(self):
         self.assertIn('"%sruntime_pool_pressure.csv",exe',CPP)
