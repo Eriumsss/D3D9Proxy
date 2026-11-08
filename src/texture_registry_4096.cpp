@@ -48,6 +48,7 @@ static const DWORD kResourceManager=0x00CD80D8;
 static const DWORD kOldCap=0x800;
 static const DWORD kNewCap=0x1000;
 static const DWORD kHigherCap=0x2000; // 8192 texture records
+static const DWORD kUltraCap=0x4000; // 16384 texture records
 
 // Stop exactly BEFORE 0x00876E05, where the separate model extension
 // changes an immediate. Either patch may be enabled independently.
@@ -126,7 +127,7 @@ static bool WriteImmediate(DWORD at,DWORD cap) {
     } __except(EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 static bool Apply(DWORD requestedCap) {
-    if (requestedCap!=kNewCap && requestedCap!=kHigherCap) {
+    if (requestedCap!=kNewCap && requestedCap!=kHigherCap && requestedCap!=kUltraCap) {
         Log("REJECT","unsupported TextureInfo cap");
         return false;
     }
@@ -205,11 +206,13 @@ void OC_TextureRegistry4096_Init() {
     last[1]=0;
     char ini[MAX_PATH]={0};
     if (_snprintf_s(ini,sizeof(ini),_TRUNCATE,"%sproxy.ini",gamePath)<0) return;
+    const bool ultra=GetPrivateProfileIntA("StaticMapPools","ExpandTextures16384",0,ini)!=0;
     const bool high=GetPrivateProfileIntA("StaticMapPools","ExpandTextures8192",0,ini)!=0;
     const bool low=GetPrivateProfileIntA("StaticMapPools","ExpandTextures4096",0,ini)!=0;
-    if (!high && !low) return; // both OFF by default
+    if (!ultra && !high && !low) return; // all OFF by default
     if (_snprintf_s(g_logPath,sizeof(g_logPath),_TRUNCATE,
                     "%stexture_registry_4096.log",gamePath)<0) return;
-    Log("BEGIN",high?"GZF-gated 8192-entry TextureInfo patch":"GZF-gated 4096-entry TextureInfo patch");
-    Apply(high?kHigherCap:kNewCap);
+    Log("BEGIN",ultra?"GZF-gated 16384-entry TextureInfo patch":
+                 high?"GZF-gated 8192-entry TextureInfo patch":"GZF-gated 4096-entry TextureInfo patch");
+    Apply(ultra?kUltraCap:(high?kHigherCap:kNewCap));
 }

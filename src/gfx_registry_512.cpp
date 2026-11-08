@@ -51,6 +51,7 @@ static const DWORD kLevelCell=0x00CD7EA0;
 static const DWORD kResourceManagerCell=0x00CD80D8;
 static const DWORD kCap256=0x100;
 static const DWORD kCap512=0x200;
+static const DWORD kCap1024=0x400; // isolated GFX vector and guard
 
 static const BYTE kCtorExpected[]={
     0x8D,0xB3,0x1C,0x01,0x00,0x00, // LEA ESI,[EBX+0x11C]
@@ -168,7 +169,7 @@ static bool BuildStubs(BYTE* page,DWORD cap) {
     return !!FlushInstructionCache(GetCurrentProcess(),page,4096);
 }
 static bool Install(DWORD cap) {
-    if (cap!=kCap256 && cap!=kCap512) {
+    if (cap!=kCap256 && cap!=kCap512 && cap!=kCap1024) {
         Log("REJECT","unsupported GFX capacity");
         return false;
     }
@@ -272,11 +273,12 @@ void OC_GfxRegistry512_Init() {
     slash[1]=0;
     char ini[MAX_PATH]={0};
     if (_snprintf_s(ini,sizeof(ini),_TRUNCATE,"%sproxy.ini",exe)<0) return;
+    const bool ultra=GetPrivateProfileIntA("StaticMapPools","ExpandGfx1024",0,ini)!=0;
     const bool high=GetPrivateProfileIntA("StaticMapPools","ExpandGfx512",0,ini)!=0;
     const bool low=GetPrivateProfileIntA("StaticMapPools","ExpandGfx256",0,ini)!=0;
-    if (!high && !low) return; // both OFF by default
+    if (!ultra && !high && !low) return; // all OFF by default
     if (_snprintf_s(g_log,sizeof(g_log),_TRUNCATE,"%sgfx_registry_512.log",exe)<0)
         return;
-    Log("BEGIN",high?"GFX native registry 512":"GFX native registry 256");
-    Install(high?kCap512:kCap256);
+    Log("BEGIN",ultra?"GFX native registry 1024":high?"GFX native registry 512":"GFX native registry 256");
+    Install(ultra?kCap1024:(high?kCap512:kCap256));
 }

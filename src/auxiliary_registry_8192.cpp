@@ -85,6 +85,7 @@ struct PatchSpec {
     DWORD oldCapacity;
     DWORD lowCapacity;
     DWORD highCapacity;
+    DWORD ultraCapacity;
 };
 
 static const PatchSpec kResourceOther={
@@ -93,7 +94,7 @@ static const PatchSpec kResourceOther={
     0x0040B321,kOtherThunk,sizeof(kOtherThunk),
     0x004347AB,kOtherReserve,sizeof(kOtherReserve),
     0x00877A1B,kOtherGuard,sizeof(kOtherGuard),
-    0x004347AF,0x00877A1C,0x800,0x1000,0x2000
+    0x004347AF,0x00877A1C,0x800,0x1000,0x2000,0x4000
 };
 static const PatchSpec kPField={
     "pfield",
@@ -101,7 +102,7 @@ static const PatchSpec kPField={
     0x0040B430,kPfThunk,sizeof(kPfThunk),
     0x00464AC7,kPfReserve,sizeof(kPfReserve),
     0x00875BFB,kPfGuard,sizeof(kPfGuard),
-    0x00464ACB,0x00875C07,0x1000,0x2000,0x2000
+    0x00464ACB,0x00875C07,0x1000,0x2000,0x2000,0x4000
 };
 
 static void Report(const char* state,const char* name,const char* detail) {
@@ -150,7 +151,7 @@ static bool WriteCap(DWORD ptr,DWORD value) {
     } __except(EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 static bool Install(const PatchSpec& spec,DWORD cap) {
-    if (cap!=spec.lowCapacity && cap!=spec.highCapacity) {
+    if (cap!=spec.lowCapacity && cap!=spec.highCapacity && cap!=spec.ultraCapacity) {
         Report("REJECT",spec.name,"unsupported registry capacity");
         return false;
     }
@@ -228,15 +229,17 @@ void OC_AuxiliaryRegistry8192_Init() {
     slash[1]=0;
     char ini[MAX_PATH]={0};
     if (_snprintf_s(ini,sizeof(ini),_TRUNCATE,"%sproxy.ini",exe)<0) return;
+    const bool otherUltra=GetPrivateProfileIntA("StaticMapPools","ExpandResourceOther16384",0,ini)!=0;
     const bool otherHigh=GetPrivateProfileIntA("StaticMapPools","ExpandResourceOther8192",0,ini)!=0;
     const bool otherLow=GetPrivateProfileIntA("StaticMapPools","ExpandResourceOther4096",0,ini)!=0;
+    const bool pfieldsUltra=GetPrivateProfileIntA("StaticMapPools","ExpandPFields16384",0,ini)!=0;
     const bool pfieldsHigh=GetPrivateProfileIntA("StaticMapPools","ExpandPFields8192",0,ini)!=0;
-    if (!otherHigh && !otherLow && !pfieldsHigh) return; // OFF by default
+    if (!otherUltra && !otherHigh && !otherLow && !pfieldsUltra && !pfieldsHigh) return; // OFF by default
     if (_snprintf_s(g_log,sizeof(g_log),_TRUNCATE,
                     "%sauxiliary_registry_8192.log",exe)<0) return;
-    if (otherHigh || otherLow)
-        Install(kResourceOther,otherHigh?kResourceOther.highCapacity:
-                                                kResourceOther.lowCapacity);
-    if (pfieldsHigh)
-        Install(kPField,kPField.highCapacity);
+    if (otherUltra || otherHigh || otherLow)
+        Install(kResourceOther,otherUltra?kResourceOther.ultraCapacity:
+                 (otherHigh?kResourceOther.highCapacity:kResourceOther.lowCapacity));
+    if (pfieldsUltra || pfieldsHigh)
+        Install(kPField,pfieldsUltra?kPField.ultraCapacity:kPField.highCapacity);
 }

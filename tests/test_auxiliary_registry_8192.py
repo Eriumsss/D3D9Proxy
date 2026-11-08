@@ -39,7 +39,7 @@ class AuxiliaryPoolContracts(unittest.TestCase):
     def test_resource_other_true_2048_reserve_factory(self):
         self.assertEqual(cbytes("kOtherReserve"),bytes.fromhex("51 53 57 bf 00 08 00 00 66 39 7e 02 0f 84 59 00 00 00"))
         self.assertEqual(cbytes("kOtherGuard"),bytes.fromhex("3d 00 08 00 00 0f 8f 18 05 00 00"))
-        self.assertIn("0x004347AF,0x00877A1C,0x800,0x1000,0x2000",CPP)
+        self.assertIn("0x004347AF,0x00877A1C,0x800,0x1000,0x2000,0x4000",CPP)
 
     def test_pfield_exact_constructor_and_thunk(self):
         self.assertEqual(cbytes("kPfConstructor"),bytes.fromhex("8d b3 14 01 00 00 e8 c7 45 b9 ff"))
@@ -51,7 +51,7 @@ class AuxiliaryPoolContracts(unittest.TestCase):
         self.assertEqual(cbytes("kPfReserve"),bytes.fromhex("51 53 57 bf 00 10 00 00 66 39 7e 02 0f 84 59 00 00 00"))
         self.assertEqual(cbytes("kPfGuard"),bytes.fromhex(
             "0f bf 8e 14 01 00 00 8d 14 01 81 fa 00 10 00 00 89 4d fc 0f 8f c6 00 00 00"))
-        self.assertIn("0x00464ACB,0x00875C07,0x1000,0x2000,0x2000",CPP)
+        self.assertIn("0x00464ACB,0x00875C07,0x1000,0x2000,0x2000,0x4000",CPP)
         self.assertEqual(pre.TABLES["pfields"][3],4096)
 
     def test_all_capacity_patches_touch_reserve_and_guard(self):
@@ -64,12 +64,14 @@ class AuxiliaryPoolContracts(unittest.TestCase):
 
     def test_patch_rejects_live_level_unknown_version_and_bad_config(self):
         for needle in ("NoLevelYet() && Exact(spec)",
-                       "cap!=spec.lowCapacity && cap!=spec.highCapacity",
+                       "cap!=spec.lowCapacity && cap!=spec.highCapacity && cap!=spec.ultraCapacity",
                        "if (cap<=spec.oldCapacity || cap>32767)",
                        "InterlockedCompareExchange(&g_once,1,0)",
                        '"ExpandResourceOther4096",0,ini',
                        '"ExpandResourceOther8192",0,ini',
-                       '"ExpandPFields8192",0,ini'):
+                       '"ExpandPFields8192",0,ini',
+                       '"ExpandPFields16384",0,ini',
+                       '"ExpandResourceOther16384",0,ini'):
             self.assertIn(needle,CPP)
 
     def test_protection_flush_rollback_preserved(self):

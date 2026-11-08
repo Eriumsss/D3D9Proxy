@@ -39,6 +39,7 @@ const DWORD kResourceManagerGlobal=0x00CD80D8;
 const DWORD kOldCap=0x200;
 const DWORD kNewCap=0x400;
 const DWORD kHigherCap=0x800; // 2048 effect records
+const DWORD kUltraCap=0x1000; // 4096 effect records
 
 const BYTE kReserveBefore[] = {
     0x51,0x53,0x57, 0xBF,0x00,0x02,0x00,0x00,
@@ -113,7 +114,7 @@ static bool StoreImmediate(DWORD at,DWORD value) {
     } __except(EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 static bool Install(DWORD requestedCap) {
-    if (requestedCap!=kNewCap && requestedCap!=kHigherCap) {
+    if (requestedCap!=kNewCap && requestedCap!=kHigherCap && requestedCap!=kUltraCap) {
         Report("REJECT","unsupported EffectInfo cap");
         return false;
     }
@@ -191,11 +192,13 @@ void OC_EffectRegistry1024_Init() {
     last[1]=0;
     char ini[MAX_PATH]={0};
     if (_snprintf_s(ini,sizeof(ini),_TRUNCATE,"%sproxy.ini",dir)<0) return;
+    const bool ultra=GetPrivateProfileIntA("StaticMapPools","ExpandEffects4096",0,ini)!=0;
     const bool high=GetPrivateProfileIntA("StaticMapPools","ExpandEffects2048",0,ini)!=0;
     const bool low=GetPrivateProfileIntA("StaticMapPools","ExpandEffects1024",0,ini)!=0;
-    if (!high && !low) return;
+    if (!ultra && !high && !low) return;
     if (_snprintf_s(g_log,sizeof(g_log),_TRUNCATE,
                     "%seffect_registry_1024.log",dir)<0) return;
-    Report("BEGIN",high?"opt-in 2048-entry EffectInfo patch":"opt-in 1024-entry EffectInfo patch");
-    Install(high?kHigherCap:kNewCap);
+    Report("BEGIN",ultra?"opt-in 4096-entry EffectInfo patch":
+                   high?"opt-in 2048-entry EffectInfo patch":"opt-in 1024-entry EffectInfo patch");
+    Install(ultra?kUltraCap:(high?kHigherCap:kNewCap));
 }

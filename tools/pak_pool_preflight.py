@@ -382,6 +382,16 @@ def main(argv: list[str] | None = None) -> int:
                         help="check outer Block1 bounds for BufferInfo, materials, Havok and other info tables")
     parser.add_argument("--mask", type=lambda s: int(s, 0), help="optional Helm's Deep gamemode mask; requires --deep")
     parser.add_argument("--json", action="store_true", help="machine-readable report")
+    parser.add_argument("--assume-pfields16384", action="store_true",
+                        help="what-if: PField registry 16384-entry patch ACTIVE (unverified)")
+    parser.add_argument("--assume-gfx1024", action="store_true",
+                        help="what-if: GFX Block registry 1024-entry patch ACTIVE (unverified)")
+    parser.add_argument("--assume-model8192", action="store_true",
+                        help="what-if: 8192 ModelInfo registry patch ACTIVE (unverified)")
+    parser.add_argument("--assume-texture16384", action="store_true",
+                        help="what-if: 16384 TextureInfo registry patch ACTIVE (unverified)")
+    parser.add_argument("--assume-effects4096", action="store_true",
+                        help="what-if: 4096 EffectInfo registry patch ACTIVE (unverified)")
     parser.add_argument("--assume-pfields8192", action="store_true",
                         help="what-if: PField registry 8192-entry patch ACTIVE (unverified)")
     parser.add_argument("--assume-gfx256", action="store_true",
@@ -440,6 +450,17 @@ def main(argv: list[str] | None = None) -> int:
         assumed_caps["gfx_blocks"] = 0x200
     if args.assume_pfields8192:
         assumed_caps["pfields"] = 0x2000
+    # Ultra-tier options win over all lower settings, just like the DLL.
+    if args.assume_model8192:
+        assumed_caps["models"] = 0x2000
+    if args.assume_texture16384:
+        assumed_caps["textures"] = 0x4000
+    if args.assume_effects4096:
+        assumed_caps["effects"] = 0x1000
+    if args.assume_gfx1024:
+        assumed_caps["gfx_blocks"] = 0x400
+    if args.assume_pfields16384:
+        assumed_caps["pfields"] = 0x4000
     try:
         def check_one(pak: Path, bin_file: Path | None) -> PakReport:
             return inspect_pak(pak, args.deep or args.collision_preservation, args.mask, assumed_caps,
