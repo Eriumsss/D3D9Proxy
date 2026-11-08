@@ -156,3 +156,20 @@ Pair it with `--collision-preservation --require-base-collision
 --require-donor-collision` for collision payload integrity checks. These are
 **on-disk measurements**, never Havok runtime pool ceilings or physics proof.
 See [COLLISION_FOOTPRINT.md](COLLISION_FOOTPRINT.md).
+
+### Correlate Havok world life with x86 process VA pressure
+
+Opt in with `[StaticMapPools]` `PhysicsWorldMonitor=1` and
+`PhysicsVaCorrelation=1` on a disposable test copy. The latter
+option defaults **OFF** and triggers additional VirtualQuery passes
+only when world monitoring is active. Each row in
+`havok_world_va_pressure.csv` contains a validated sampled world
+pointer, 32-bit process virtual-address memory counters, process ID,
+and a unique launch-session ID. It works before a level exists.
+
+Use `python tools/analyze_havok_va_correlation.py --game-dir PATH`
+or add `--json`. Adjacent world events and process VA deltas are
+compared **only within the same launch session and process**.
+This is process-wide VA, **NOT Havok allocator bytes or leak proof**.
+No EXE hook, PAK write or allocator expansion is introduced.
+See [HAVOK_VA_CORRELATION.md](HAVOK_VA_CORRELATION.md).

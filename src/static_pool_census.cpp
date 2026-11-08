@@ -73,6 +73,11 @@ static char g_pressureOutput[MAX_PATH];
 static char g_vaOutput[MAX_PATH];
 static char g_blendOutput[MAX_PATH];
 static char g_physicsOutput[MAX_PATH];
+static char g_physicsVaOutput[MAX_PATH];
+// Off by default, even when PhysicsWorldMonitor=1. VirtualQuery of the
+// complete x86 address space is a heavier pass than sampling world pointers.
+static bool g_physicsVaEnabled=false;
+static FILETIME g_physicsVaSession={0,0};
 static bool g_physicsMonitorEnabled=false;
 static DWORD g_lastPhysicsLog=0;
 static bool g_physicsPrevValid=false;
@@ -495,6 +500,47 @@ static void PollBlend() {
     fclose(f);
 }
 
+// Same process, same sample, same output row: join by a boot-unique FILETIME
+// session ID, never by a bare GetTickCount from append-across-launches files.
+// This scan is PROCESS-WIDE VA accounting, *not* an hkPoolMemory allocator
+// counter. A world might disappear during VirtualQuery: recheck its owner.
+static void LogWorldVaCorrelation(DWORD now,DWORD level,DWORD manager,DWORD world,
+                                  BYTE loading,bool worldValid,const char* status,
+                                  const char* transition) {
+    if (!g_physicsVaEnabled) return;
+    const VaPressure vm=MeasureVirtualAddressPressure();
+    DWORD checkManager=0,checkWorld=0;
+    if (worldValid) {
+        bool stable=ReadDword(kPhysicsMgrCell,checkManager) && checkManager==manager;
+        if (stable && manager)
+            stable=ReadDword((uintptr_t)manager+kPhysicsWorldOffset,checkWorld) &&
+                   checkWorld==world;
+        if (!stable) {
+            worldValid=false;
+            status="RACED_DURING_VA_SCAN";
+            transition="UNKNOWN";
+        }
+    }
+
+    FILE* f=NULL;
+    if (fopen_s(&f,g_physicsVaOutput,"ab+")!=0 || !f) return;
+    if (fseek(f,0,SEEK_END)==0 && ftell(f)==0)
+        fputs("session_id,process_id,time_ms,level_object,manager_ptr,world_ptr,"
+              "loading_flag,world_valid,world_status,transition,va_valid,"
+              "committed_bytes,reserved_bytes,free_bytes,largest_free_bytes,"
+              "free_regions,reserved_regions,committed_regions\n",f);
+    fprintf(f,"%08lX%08lX,%lu,%lu,%08lX,%08lX,%08lX,%u,%u,%s,%s,%u,"
+              "%llu,%llu,%llu,%llu,%u,%u,%u\n",
+            (unsigned long)g_physicsVaSession.dwHighDateTime,
+            (unsigned long)g_physicsVaSession.dwLowDateTime,
+            (unsigned long)GetCurrentProcessId(),(unsigned long)now,
+            (unsigned long)level,(unsigned long)manager,(unsigned long)world,
+            (unsigned)loading,(unsigned)worldValid,status,transition,vm.valid,
+            vm.committedBytes,vm.reservedBytes,vm.freeBytes,vm.largestFreeBytes,
+            vm.freeRegions,vm.reservedRegions,vm.committedRegions);
+    fclose(f);
+}
+
 // The physics manager is process-scoped, but its +0xFC hkpWorld* changes
 // across level enter/exit. Watch only that ownership edge. This DOES NOT
 // instrument hkPoolMemory, hkpShape allocation, or a Havok pool ceiling.
@@ -578,6 +624,7 @@ static void PollPhysicsWorld() {
             g_physicsObservedAttaches,g_physicsObservedDetaches,
             g_physicsObservedReplacements);
     fclose(f);
+    LogWorldVaCorrelation(now,level,manager,world,loading,valid,status,transition);
 }
 
 static void Poll() {
@@ -663,6 +710,8 @@ void OC_StaticPoolCensus_Init() {
     const bool staticOn=GetPrivateProfileIntA("StaticMapPools","Monitor",0,ini)!=0;
     const bool blendOn=GetPrivateProfileIntA("StaticMapPools","BlendMonitor",0,ini)!=0;
     const bool physicsOn=GetPrivateProfileIntA("StaticMapPools","PhysicsWorldMonitor",0,ini)!=0;
+    const bool physicsVaOn=physicsOn &&
+        GetPrivateProfileIntA("StaticMapPools","PhysicsVaCorrelation",0,ini)!=0;
     if (!staticOn && !blendOn && !physicsOn) return;
     if (staticOn) {
         if (_snprintf_s(g_output,sizeof(g_output),_TRUNCATE,
@@ -676,9 +725,14 @@ void OC_StaticPoolCensus_Init() {
                                 "%sanimation_blend_pool.csv",exe)<0) return;
     if (physicsOn && _snprintf_s(g_physicsOutput,sizeof(g_physicsOutput),_TRUNCATE,
                                   "%shavok_world_lifecycle.csv",exe)<0) return;
+    if (physicsVaOn &&
+        _snprintf_s(g_physicsVaOutput,sizeof(g_physicsVaOutput),_TRUNCATE,
+                    "%shavok_world_va_pressure.csv",exe)<0) return;
     g_staticMonitorEnabled=staticOn;
     g_blendMonitorEnabled=blendOn;
     g_physicsMonitorEnabled=physicsOn;
+    g_physicsVaEnabled=physicsVaOn;
+    if (g_physicsVaEnabled) GetSystemTimeAsFileTime(&g_physicsVaSession);
     // Evidence only: dump constructor and factory guard opcode windows, which
     // the next patch must verify against the Ghidra database before writes.
     DumpCodeSiteFingerprints(exe);

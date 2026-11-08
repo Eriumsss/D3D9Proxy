@@ -32,6 +32,7 @@ static const char kDefaultIni[] =
     "GeometryBudget=1\r\n"
     "BlendMonitor=0\r\n"
     "PhysicsWorldMonitor=0\r\n"
+    "PhysicsVaCorrelation=0\r\n"
     "\r\n"
     "; Static native registries\r\n"
     "ExpandModels2048=0\r\n"
