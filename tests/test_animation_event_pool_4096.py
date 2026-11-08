@@ -87,8 +87,6 @@ class NativeAnimationEventPool4096(unittest.TestCase):
             "if (!Idle() || !StockImage())",
             "count!=0",
             "ValidFreeList(old,kStockCap)",
-            "Readable(h.base,bytes)",
-            "0x81,0x3D,0x74,0x99,0xCD,0x00,0x00,0x04,0x00,0x00",
             "VirtualProtect((LPVOID)(uintptr_t)kPostGuardImm,4",
             "PAGE_EXECUTE_READWRITE",
             "ReadHeader(again,live)",
@@ -102,6 +100,8 @@ class NativeAnimationEventPool4096(unittest.TestCase):
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected,install)
+        self.assertIn("Readable(h.base,bytes)",SRC)  # implemented in ValidFreeList, called by Install
+        self.assertIn("0x81,0x3D,0x74,0x99,0xCD,0x00,0x00,0x04,0x00,0x00",SRC) # checked in StockImage
         self.assertIn('if (!GetPrivateProfileIntA("StaticMapPools","ExpandAnimationEventPool4096",0,ini))',SRC)
         self.assertIn("kLevelCell=0x00CD7EA0",SRC)
         self.assertIn("kResourceMgrCell=0x00CD80D8",SRC)
@@ -177,7 +177,7 @@ class NativeAnimationEventPool4096(unittest.TestCase):
     def test_ci_docs_and_guardrails_explicit(self):
         self.assertEqual(WORKFLOW.count("'tests/test_animation_event_pool_4096.py'"),2)
         self.assertIn("test_animation_event_pool_4096.py -v",WORKFLOW)
-        for phrase in ("NOT retail-validated","FUN_00404C2F","0x0096E44C",
+        for phrase in ("NOT retail-validated","FUN_00404C2F","FUN_0096E44C",
                        "48 KiB","ExpandAnimationEventPool4096=1"):
             self.assertIn(phrase,DOC)
 
