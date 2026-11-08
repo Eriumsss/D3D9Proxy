@@ -59,6 +59,7 @@ def compare_static_model_preservation(
         "base_preserved": 0, "donor_present": 0,
         "missing_base": 0, "missing_donor": 0,
         "missing_donor_source": 0, "ambiguous_key": 0,
+        "target_already_host": 0,
         "lost_base_mesh": 0, "lost_donor_mesh": 0,
         "dropped_base_mask_bits": 0, "zero_donor_mask": 0,
         "zero_source_key": 0, "zero_merged_asset_key": 0,
@@ -112,6 +113,10 @@ def compare_static_model_preservation(
         targets = merged.get(target_key,[])
         if not sources:
             problem("missing_donor_source",key,target_key,"selected donor CRC absent from donor PAK")
+            continue
+        if target_key in base:
+            problem("target_already_host",key,target_key,
+                    "CRC is already present in host; cannot prove independent donor import using identity alone")
             continue
         if len(sources)!=1 or len(targets)>1:
             problem("ambiguous_key",key,target_key,"donor/merged CRC duplicates prevent unique import check")
