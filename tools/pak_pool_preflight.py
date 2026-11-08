@@ -603,7 +603,7 @@ def main(argv: list[str] | None = None) -> int:
             for warning in report.warnings:
                 print("  WARN: " + warning)
         if model_preservation is not None:
-            print("\\n[STATIC MODEL IDENTITY PRESERVATION / read-only]")
+            print("\n[STATIC MODEL IDENTITY PRESERVATION / read-only]")
             for label in ("base_models","base_preserved","requested_donor_models",
                           "donor_present","strict_failures"):
                 print(f"  {label}: {model_preservation[label]}")
