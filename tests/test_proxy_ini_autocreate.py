@@ -51,7 +51,8 @@ class ProxyIniAutocreate(unittest.TestCase):
             "ExpandResourceOther4096","ExpandResourceOther8192","ExpandResourceOther16384",
             "ExpandPFields8192","ExpandPFields16384",
             "ExpandDeviceResetResources1024","ExpandDeviceResetResources4096",
-            "ExpandDynamicBufferReset1024","ExpandDynamicBufferReset4096"
+            "ExpandDynamicBufferReset1024","ExpandDynamicBufferReset4096",
+            "ExpandAnimationEventPool4096"
         ]
         values=self.config["StaticMapPools"]
         for name in keys:
