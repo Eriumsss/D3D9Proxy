@@ -270,13 +270,13 @@ static DWORD ValidateEventPool() {
         DWORD count = *(DWORD*)POOL_COUNT_PTR;
 
         // Check 1: Count within bounds
-        if (count > POOL_MAX_ENTRIES) {
+        if (count > PoolAuditLimit()) {
             result |= POOL_COUNT_OVERFLOW;
             DangerLog("POOL VALIDATION: count=%d exceeds max=%d", count, PoolAuditLimit());
         }
 
         // Calculate pool bounds
-        DWORD poolEnd = poolBase + POOL_MAX_ENTRIES * POOL_ENTRY_SIZE;
+        DWORD poolEnd = poolBase + PoolAuditLimit() * POOL_ENTRY_SIZE;
 
         // Check 2: FreeHead is NULL or within pool range
         if (freeHead != 0 && (freeHead < poolBase || freeHead >= poolEnd)) {
@@ -395,7 +395,7 @@ static bool ValidateEventPoolFreelistDetailed() {
         DWORD poolEnd = poolBase + PoolAuditLimit() * POOL_ENTRY_SIZE;
 
         // Quick bounds check
-        if (count > POOL_MAX_ENTRIES) {
+        if (count > PoolAuditLimit()) {
             FreelistDiagLog("[CORRUPTION] Pool count overflow: %d > %d", count, PoolAuditLimit());
             return false;
         }
@@ -1240,7 +1240,7 @@ static const char* IdentifyFunction(DWORD addr) {
 // ============================================================================
 
 // Bitmap to track allocated entries (1 = allocated, 0 = free)
-static BYTE g_PoolAllocationBitmap[POOL_MAX_ENTRIES / 8 + 1] = {0};
+static BYTE g_PoolAllocationBitmap[POOL_AUDIT_MAX_ENTRIES / 8 + 1] = {0};
 static volatile bool g_BitmapInitialized = false;
 
 // Initialize allocation bitmap
@@ -1252,7 +1252,7 @@ static void InitPoolAllocationBitmap() {
 
 // Set bit in allocation bitmap
 static void SetAllocBit(DWORD entryIndex) {
-    if (entryIndex >= POOL_MAX_ENTRIES) return;
+    if (entryIndex >= PoolAuditLimit()) return;
     DWORD byteIdx = entryIndex / 8;
     DWORD bitIdx = entryIndex % 8;
     g_PoolAllocationBitmap[byteIdx] |= (1 << bitIdx);
