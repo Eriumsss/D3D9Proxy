@@ -115,7 +115,14 @@ class HavokWorldLifecycleContract(unittest.TestCase):
             self.assertEqual(result["observed_transitions"]["WORLD_APPEARED"],1)
             self.assertEqual(result["observed_transitions"]["WORLD_DISAPPEARED"],1)
             self.assertEqual(result["loading_with_world_samples"],1)
-            self.assertTrue(any("NOT proof of a leak" in note for note in result["notes"]))
+            self.assertFalse(any("NOT proof of a leak" in note for note in result["notes"]))
+            self.assertTrue(any("not Havok allocator bytes" in note for note in result["notes"]))
+            # A world still present at the last sample DOES add the leak caveat.
+            write_csv(directory,[sample(6000,manager="00201000",world="00202000",
+                                        status="WORLD_PRESENT")])
+            still_present=analyzer.summarize(directory)
+            self.assertTrue(any("NOT proof of a leak" in note
+                                for note in still_present["notes"]))
 
     def test_bad_schema_and_no_valid_rows_fail_closed(self):
         with tempfile.TemporaryDirectory() as d:
