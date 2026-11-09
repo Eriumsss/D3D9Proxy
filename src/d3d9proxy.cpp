@@ -5,6 +5,7 @@
 #include <new>
 
 #include "d3d9device.h"
+#include "render_scale_200.h"
 #include "memorypatch.h"
 #include "retail_fn_trace.h"
 #include "retail_heap_extender.h"
@@ -116,13 +117,46 @@ public:
             pParams->BackBufferFormat = D3DFMT_UNKNOWN;
         }
         IDirect3DDevice9* pRealDevice = nullptr;
-        HRESULT hr = m_pReal->CreateDevice(Adapter, DeviceType, hFocusWindow, BehaviorFlags, pParams, &pRealDevice);
+        bool rs200Active=false;
+        UINT logicalW=0,logicalH=0;
+        D3DPRESENT_PARAMETERS supersampled={};
+        const bool requested=OC_RS200_Requested();
+        D3DCAPS9 caps={};
+        const bool eligible=requested && pParams &&
+            SUCCEEDED(m_pReal->GetDeviceCaps(Adapter,DeviceType,&caps)) &&
+            OC_RS200_Prepare(pParams,hFocusWindow,caps,supersampled,
+                             logicalW,logicalH);
+        HRESULT hr=D3DERR_INVALIDCALL;
+        if (eligible) {
+            hr=m_pReal->CreateDevice(Adapter,DeviceType,hFocusWindow,
+                                     BehaviorFlags,&supersampled,&pRealDevice);
+            if (SUCCEEDED(hr) && pRealDevice) {
+                rs200Active=true;
+                OC_RS200_Log("CREATE_ACTIVE",logicalW,logicalH,
+                             supersampled.BackBufferWidth,
+                             supersampled.BackBufferHeight,hr);
+            } else {
+                if (pRealDevice) { pRealDevice->Release(); pRealDevice=nullptr; }
+                OC_RS200_Log("CREATE_FALLBACK",logicalW,logicalH,
+                             supersampled.BackBufferWidth,
+                             supersampled.BackBufferHeight,hr);
+            }
+        } else if (requested) {
+            OC_RS200_Log("CREATE_UNSUPPORTED",0,0,0,0,D3DERR_INVALIDCALL);
+        }
+        if (!rs200Active) {
+            // Failed/unsupported 200% backbuffer must not keep the game from
+            // booting. Retry the original backbuffer parameters unchanged.
+            hr=m_pReal->CreateDevice(Adapter,DeviceType,hFocusWindow,
+                                     BehaviorFlags,pParams,&pRealDevice);
+        }
         if (SUCCEEDED(hr) && pRealDevice) {
             ProxyIDirect3DDevice9* wrapped = new (std::nothrow) ProxyIDirect3DDevice9(pRealDevice);
             if (!wrapped) {
                 pRealDevice->Release();
                 return E_OUTOFMEMORY;
             }
+            wrapped->ConfigureRenderScale200(rs200Active,logicalW,logicalH,hFocusWindow);
             *ppDevice = wrapped;
         }
         else if (pRealDevice) pRealDevice->Release();
