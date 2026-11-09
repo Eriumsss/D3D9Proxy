@@ -81,9 +81,6 @@ on:
       - 'src/proxy_config.cpp'
       - 'src/proxy_config.h'
       - 'tests/test_proxy_ini_autocreate.py'
-      - 'tests/test_render_scale_200.py'
-      - 'src/render_scale_200.h'
-      - 'RENDER_SCALE_200.md'
       - 'build.bat'
       - '.github/workflows/static-map-pak-preflight.yml'
   pull_request:
@@ -167,9 +164,6 @@ on:
       - 'src/proxy_config.cpp'
       - 'src/proxy_config.h'
       - 'tests/test_proxy_ini_autocreate.py'
-      - 'tests/test_render_scale_200.py'
-      - 'src/render_scale_200.h'
-      - 'RENDER_SCALE_200.md'
       - 'build.bat'
       - '.github/workflows/static-map-pak-preflight.yml'
 jobs:
@@ -179,7 +173,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Syntax check
-        run: python3 -m py_compile tests/test_render_scale_200.py tests/test_animation_event_pool_4096.py tests/test_animation_event_pool.py tools/native_model_preservation.py tests/test_static_model_preservation.py tools/analyze_havok_va_correlation.py tests/test_havok_va_correlation.py tools/analyze_havok_world.py tests/test_havok_world_lifecycle.py tools/analyze_runtime_pressure.py tests/test_virtual_address_pressure.py tools/pak_pool_preflight.py tests/test_pak_pool_preflight.py tests/test_static_geometry_preflight.py tests/test_native_table_preflight.py tests/test_model_bin_link_preflight.py tools/native_geometry_links.py tools/native_collision_links.py tests/test_native_collision_links.py tools/native_collision_provenance.py tests/test_collision_provenance.py
+        run: python3 -m py_compile tests/test_animation_event_pool_4096.py tests/test_animation_event_pool.py tools/native_model_preservation.py tests/test_static_model_preservation.py tools/analyze_havok_va_correlation.py tests/test_havok_va_correlation.py tools/analyze_havok_world.py tests/test_havok_world_lifecycle.py tools/analyze_runtime_pressure.py tests/test_virtual_address_pressure.py tools/pak_pool_preflight.py tests/test_pak_pool_preflight.py tests/test_static_geometry_preflight.py tests/test_native_table_preflight.py tests/test_model_bin_link_preflight.py tools/native_geometry_links.py tools/native_collision_links.py tests/test_native_collision_links.py tools/native_collision_provenance.py tests/test_collision_provenance.py
       - name: Synthetic PC PAK and pool-cap regression tests
         run: python3 -m unittest discover -s tests -p test_pak_pool_preflight.py -v
       - name: Synthetic PC PAK Block2 static geometry buffer validation
@@ -232,8 +226,6 @@ jobs:
         run: python3 -m unittest discover -s tests -p test_dynamic_buffer_reset_pools_4096.py -v
       - name: Native proxy.ini first-run creation and existing settings preservation
         run: python3 -m unittest discover -s tests -p test_proxy_ini_autocreate.py -v
-      - name: Experimental windowed D3D9 supersampling 200% native backbuffer contracts
-        run: python3 -m unittest discover -s tests -p test_render_scale_200.py -v
       - name: MSVC x86 fault-address and PDB/MAP symbolization contracts
         run: python3 -m unittest discover -s tests -p test_proxy_crash_symbols.py -v
   retail-x86-module-compile:

@@ -70,12 +70,7 @@ static const char kDefaultIni[] =
     "\r\n"
     "[WorldResourceMemory]\r\n"
     "TextureVault=0\r\n"
-    "Monitor=0\r\n"
-    "\r\n"
-    "[Graphics]\r\n"
-    "; Experimental full-backbuffer supersampling; 100=original, 200=2x width/height\r\n"
-    "; Windowed Direct3D9 only. HUD and offscreen HDR passes may not be scaled.\r\n"
-    "RenderScalePercent=100\r\n";
+    "Monitor=0\r\n";
 
 static void Report(const char* status, DWORD code) {
     char message[192]={0};

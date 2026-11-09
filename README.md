@@ -231,23 +231,3 @@ Enable `EventPoolMonitor=1` to confirm `expanded_active=1` and
 **NOT retail gameplay validation**. Do not enable on the primary copy
 until enter/exit/reload, stress, and Alt+Enter tests pass.
 See [ANIMATION_EVENT_POOL_4096.md](ANIMATION_EVENT_POOL_4096.md).
-
-### Experimental 200% D3D9 windowed backbuffer resolution
-
-`[Graphics] RenderScalePercent=200` (default **100 = off**)
-requests a windowed D3D9 backbuffer at **2× width and 2× height**
-(4× pixel count). A 1920×1080 game window therefore renders into a
-3840×2160 primary backbuffer and presents it to the existing window
-client area. If unsupported by the GPU/driver, the proxy attempts
-the original backbuffer. The option also handles device Reset,
-primary-target viewport/scissor/clear rectangles and optional Present
-source rectangles without modifying independent HDR/shadow targets.
-
-This is **full-backbuffer supersampling, not guaranteed scene-only 3D
-supersampling**. Conquest has offscreen HDR passes and a UI composition
-pipeline; the 3D world may remain at native resolution when drawn
-through those targets, and the HUD or screen-space effects can break.
-Only a separate render-graph-aware scene-only patch could guarantee
-that narrower behavior. Use a disposable game copy, inspect
-`render_scale_200.log` and test a match, HUD and Alt+Enter.
-See [RENDER_SCALE_200.md](RENDER_SCALE_200.md).
