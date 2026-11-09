@@ -23,16 +23,10 @@ extern bool g_WireframeEnabled;
 class ProxyIDirect3DDevice9 : public IDirect3DDevice9 {
 private:
     IDirect3DDevice9* m_pReal;
-    bool m_renderScale200;
-    UINT m_renderLogicalW;
-    UINT m_renderLogicalH;
-    HWND m_renderWindow;
-    bool OnMainBackBuffer();
 
 public:
     ProxyIDirect3DDevice9(IDirect3DDevice9* pReal);
     IDirect3DDevice9* GetReal() { return m_pReal; }
-    void ConfigureRenderScale200(bool active,UINT logicalW,UINT logicalH,HWND window);
 
     // IUnknown
     HRESULT __stdcall QueryInterface(REFIID riid, void** ppvObj) override;
