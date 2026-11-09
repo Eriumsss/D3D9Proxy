@@ -1,4 +1,5 @@
 #include "d3d9device.h"
+#include "render_scale_200.h"
 #include "memorypatch.h"
 #include "retail_heap_extender.h"
 #include "geometry_budget_telemetry.h"
@@ -1090,7 +1091,33 @@ static void DumpShaderBytecode(void* pShader, bool isVS) {
     }
 }
 
-ProxyIDirect3DDevice9::ProxyIDirect3DDevice9(IDirect3DDevice9* pReal) : m_pReal(pReal) { TrMarkLoaded(); OCV_OnDeviceCreated(this,pReal); }
+ProxyIDirect3DDevice9::ProxyIDirect3DDevice9(IDirect3DDevice9* pReal)
+    : m_pReal(pReal),m_renderScale200(false),
+      m_renderLogicalW(0),m_renderLogicalH(0),m_renderWindow(NULL) {
+    TrMarkLoaded();
+    OCV_OnDeviceCreated(this,pReal);
+}
+void ProxyIDirect3DDevice9::ConfigureRenderScale200(
+        bool active,UINT logicalW,UINT logicalH,HWND window) {
+    m_renderScale200=active && logicalW>=320 && logicalH>=200;
+    m_renderLogicalW=m_renderScale200?logicalW:0;
+    m_renderLogicalH=m_renderScale200?logicalH:0;
+    m_renderWindow=window;
+}
+bool ProxyIDirect3DDevice9::OnMainBackBuffer() {
+    if (!m_renderScale200) return false;
+    // Never scale a shadow map, HDR target, bloom buffer or offscreen scene
+    // just because it shares the display's numeric width and height.
+    // Compare real COM identity; release both temporary references.
+    IDirect3DSurface9* current=NULL;
+    IDirect3DSurface9* back=NULL;
+    const bool ok=SUCCEEDED(m_pReal->GetRenderTarget(0,&current)) &&
+                  SUCCEEDED(m_pReal->GetBackBuffer(0,0,D3DBACKBUFFER_TYPE_MONO,&back)) &&
+                  current && current==back;
+    if (current) current->Release();
+    if (back) back->Release();
+    return ok;
+}
 
 // IUnknown
 HRESULT __stdcall ProxyIDirect3DDevice9::QueryInterface(REFIID riid, void** ppvObj) {
@@ -1129,7 +1156,47 @@ UINT __stdcall ProxyIDirect3DDevice9::GetNumberOfSwapChains() { return m_pReal->
 HRESULT __stdcall ProxyIDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pParams) { LfLog("DEVICE RESET  %ux%u fmt=%d windowed=%d  <-- TEARDOWN (all DEFAULT-pool resources die here)", pParams?pParams->BackBufferWidth:0, pParams?pParams->BackBufferHeight:0, pParams?(int)pParams->BackBufferFormat:0, pParams?(int)pParams->Windowed:0);
     OCV_BeforeReset(m_pReal);
     Overlay_OnReset();
-    HRESULT hr=m_pReal->Reset(pParams);
+    D3DPRESENT_PARAMETERS scaled={};
+    UINT logicalW=0,logicalH=0;
+    bool eligible=false;
+    if (OC_RS200_Requested() && pParams) {
+        D3DCAPS9 caps={};
+        if (SUCCEEDED(m_pReal->GetDeviceCaps(&caps))) {
+            // Some engines pass the physical dimensions observed from
+            // GetBackBuffer back to Reset. Avoid multiplying them twice.
+            if (m_renderScale200 &&
+                pParams->BackBufferWidth==m_renderLogicalW*2 &&
+                pParams->BackBufferHeight==m_renderLogicalH*2 &&
+                pParams->Windowed) {
+                scaled=*pParams;
+                logicalW=m_renderLogicalW;
+                logicalH=m_renderLogicalH;
+                eligible=true;
+            } else {
+                eligible=OC_RS200_Prepare(pParams,m_renderWindow,caps,
+                                           scaled,logicalW,logicalH);
+            }
+        }
+    }
+    HRESULT hr=D3DERR_INVALIDCALL;
+    bool active=false;
+    if (eligible) {
+        hr=m_pReal->Reset(&scaled);
+        if (SUCCEEDED(hr)) {
+            active=true;
+            OC_RS200_Log("RESET_ACTIVE",logicalW,logicalH,
+                         scaled.BackBufferWidth,scaled.BackBufferHeight,hr);
+        } else {
+            OC_RS200_Log("RESET_FALLBACK",logicalW,logicalH,
+                         scaled.BackBufferWidth,scaled.BackBufferHeight,hr);
+        }
+    }
+    if (!active) {
+        // If the larger backbuffer is unsupported, recover the original
+        // presentation path. No screen-mode or game resolution mutation.
+        hr=m_pReal->Reset(pParams);
+    }
+    ConfigureRenderScale200(active,logicalW,logicalH,m_renderWindow);
     OCV_AfterReset(m_pReal,hr);
     return hr;
 }
@@ -1140,6 +1207,11 @@ HRESULT __stdcall ProxyIDirect3DDevice9::Reset(D3DPRESENT_PARAMETERS* pParams) {
 namespace { void FcTick(); }
 
 HRESULT __stdcall ProxyIDirect3DDevice9::Present(const RECT* pSrc, const RECT* pDst, HWND hWnd, const RGNDATA* pDirtyRgn) { TrFrameEdge(); LfFrameTick(); FcTick();
+    RECT srcScaled={0,0,0,0};
+    const RECT* src=pSrc;
+    if (m_renderScale200 && pSrc &&
+        OC_RS200_LogicalRect(*pSrc,m_renderLogicalW,m_renderLogicalH,srcScaled))
+        src=&srcScaled; // destination remains the physical window client rect
     // Per-frame crowd handler tick. Reads F11 input, mutates CrowdItem.instNum
     // for hide/show. Lives in the render thread which is fine because crowd
     // mutations only need to happen between frames, not during one.
@@ -1147,7 +1219,7 @@ HRESULT __stdcall ProxyIDirect3DDevice9::Present(const RECT* pSrc, const RECT* p
     if (!s_crowdInited) { CrowdHandler_Init(); s_crowdInited = true; }
     CrowdHandler_OnFrame();
     OCV_OnPresent(m_pReal);
-    return m_pReal->Present(pSrc, pDst, hWnd, pDirtyRgn);
+    return m_pReal->Present(src, pDst, hWnd, pDirtyRgn);
 }
 HRESULT __stdcall ProxyIDirect3DDevice9::GetBackBuffer(UINT iSwapChain, UINT iBackBuffer, D3DBACKBUFFER_TYPE Type, IDirect3DSurface9** ppSurface) { return m_pReal->GetBackBuffer(iSwapChain, iBackBuffer, Type, ppSurface); }
 HRESULT __stdcall ProxyIDirect3DDevice9::GetRasterStatus(UINT iSwapChain, D3DRASTER_STATUS* pRasterStatus) { return m_pReal->GetRasterStatus(iSwapChain, pRasterStatus); }
@@ -1253,12 +1325,46 @@ HRESULT __stdcall ProxyIDirect3DDevice9::EndScene() {
     return m_pReal->EndScene();
 }
 
-HRESULT __stdcall ProxyIDirect3DDevice9::Clear(DWORD Count, const D3DRECT* pRects, DWORD Flags, D3DCOLOR Color, float Z, DWORD Stencil) { return m_pReal->Clear(Count, pRects, Flags, Color, Z, Stencil); }
+HRESULT __stdcall ProxyIDirect3DDevice9::Clear(DWORD Count, const D3DRECT* pRects, DWORD Flags, D3DCOLOR Color, float Z, DWORD Stencil) {
+    if (m_renderScale200 && pRects && Count>0 && Count<=16 && OnMainBackBuffer()) {
+        D3DRECT transformed[16];
+        bool allLogical=true;
+        for (DWORD i=0;i<Count;++i) {
+            const RECT r={pRects[i].x1,pRects[i].y1,pRects[i].x2,pRects[i].y2};
+            RECT out={0,0,0,0};
+            if (!OC_RS200_LogicalRect(r,m_renderLogicalW,m_renderLogicalH,out)) {
+                allLogical=false;break;
+            }
+            transformed[i].x1=out.left;transformed[i].y1=out.top;
+            transformed[i].x2=out.right;transformed[i].y2=out.bottom;
+        }
+        if (allLogical)
+            return m_pReal->Clear(Count,transformed,Flags,Color,Z,Stencil);
+    }
+    return m_pReal->Clear(Count,pRects,Flags,Color,Z,Stencil);
+}
 HRESULT __stdcall ProxyIDirect3DDevice9::SetTransform(D3DTRANSFORMSTATETYPE State, const D3DMATRIX* pMatrix) { return m_pReal->SetTransform(State, pMatrix); }
 HRESULT __stdcall ProxyIDirect3DDevice9::GetTransform(D3DTRANSFORMSTATETYPE State, D3DMATRIX* pMatrix) { return m_pReal->GetTransform(State, pMatrix); }
 HRESULT __stdcall ProxyIDirect3DDevice9::MultiplyTransform(D3DTRANSFORMSTATETYPE State, const D3DMATRIX* pMatrix) { return m_pReal->MultiplyTransform(State, pMatrix); }
-HRESULT __stdcall ProxyIDirect3DDevice9::SetViewport(const D3DVIEWPORT9* pViewport) { return m_pReal->SetViewport(pViewport); }
-HRESULT __stdcall ProxyIDirect3DDevice9::GetViewport(D3DVIEWPORT9* pViewport) { return m_pReal->GetViewport(pViewport); }
+HRESULT __stdcall ProxyIDirect3DDevice9::SetViewport(const D3DVIEWPORT9* pViewport) {
+    if (m_renderScale200 && pViewport && OnMainBackBuffer()) {
+        D3DVIEWPORT9 physical={};
+        if (OC_RS200_LogicalViewport(*pViewport,
+                                    m_renderLogicalW,m_renderLogicalH,physical))
+            return m_pReal->SetViewport(&physical);
+    }
+    return m_pReal->SetViewport(pViewport);
+}
+HRESULT __stdcall ProxyIDirect3DDevice9::GetViewport(D3DVIEWPORT9* pViewport) {
+    HRESULT hr=m_pReal->GetViewport(pViewport);
+    if (SUCCEEDED(hr) && pViewport && m_renderScale200 && OnMainBackBuffer()) {
+        D3DVIEWPORT9 logical={};
+        if (OC_RS200_PhysicalViewport(*pViewport,
+                                     m_renderLogicalW,m_renderLogicalH,logical))
+            *pViewport=logical;
+    }
+    return hr;
+}
 HRESULT __stdcall ProxyIDirect3DDevice9::SetMaterial(const D3DMATERIAL9* pMaterial) { return m_pReal->SetMaterial(pMaterial); }
 HRESULT __stdcall ProxyIDirect3DDevice9::GetMaterial(D3DMATERIAL9* pMaterial) { return m_pReal->GetMaterial(pMaterial); }
 HRESULT __stdcall ProxyIDirect3DDevice9::SetLight(DWORD Index, const D3DLIGHT9* pLight) { return m_pReal->SetLight(Index, pLight); }
@@ -1300,8 +1406,28 @@ HRESULT __stdcall ProxyIDirect3DDevice9::SetPaletteEntries(UINT PaletteNumber, c
 HRESULT __stdcall ProxyIDirect3DDevice9::GetPaletteEntries(UINT PaletteNumber, PALETTEENTRY* pEntries) { return m_pReal->GetPaletteEntries(PaletteNumber, pEntries); }
 HRESULT __stdcall ProxyIDirect3DDevice9::SetCurrentTexturePalette(UINT PaletteNumber) { return m_pReal->SetCurrentTexturePalette(PaletteNumber); }
 HRESULT __stdcall ProxyIDirect3DDevice9::GetCurrentTexturePalette(UINT* PaletteNumber) { return m_pReal->GetCurrentTexturePalette(PaletteNumber); }
-HRESULT __stdcall ProxyIDirect3DDevice9::SetScissorRect(const RECT* pRect) { return m_pReal->SetScissorRect(pRect); }
-HRESULT __stdcall ProxyIDirect3DDevice9::GetScissorRect(RECT* pRect) { return m_pReal->GetScissorRect(pRect); }
+HRESULT __stdcall ProxyIDirect3DDevice9::SetScissorRect(const RECT* pRect) {
+    if (m_renderScale200 && pRect && OnMainBackBuffer()) {
+        RECT physical={0,0,0,0};
+        if (OC_RS200_LogicalRect(*pRect,m_renderLogicalW,
+                                 m_renderLogicalH,physical))
+            return m_pReal->SetScissorRect(&physical);
+    }
+    return m_pReal->SetScissorRect(pRect);
+}
+HRESULT __stdcall ProxyIDirect3DDevice9::GetScissorRect(RECT* pRect) {
+    HRESULT hr=m_pReal->GetScissorRect(pRect);
+    if (SUCCEEDED(hr) && pRect && m_renderScale200 && OnMainBackBuffer() &&
+        pRect->left>=0 && pRect->top>=0 &&
+        pRect->right>=pRect->left && pRect->bottom>=pRect->top &&
+        (UINT)pRect->right<=m_renderLogicalW*2 &&
+        (UINT)pRect->bottom<=m_renderLogicalH*2 &&
+        !((pRect->left|pRect->top|pRect->right|pRect->bottom)&1)) {
+        pRect->left/=2;pRect->top/=2;
+        pRect->right/=2;pRect->bottom/=2;
+    }
+    return hr;
+}
 HRESULT __stdcall ProxyIDirect3DDevice9::SetSoftwareVertexProcessing(BOOL bSoftware) { return m_pReal->SetSoftwareVertexProcessing(bSoftware); }
 BOOL __stdcall ProxyIDirect3DDevice9::GetSoftwareVertexProcessing() { return m_pReal->GetSoftwareVertexProcessing(); }
 HRESULT __stdcall ProxyIDirect3DDevice9::SetNPatchMode(float nSegments) { return m_pReal->SetNPatchMode(nSegments); }
